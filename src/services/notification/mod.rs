@@ -198,6 +198,7 @@ impl NotificationService {
 				let notifier = ScriptNotifier::from_config(&trigger.config);
 				if let Some(notifier) = notifier {
 					let monitor_name = match monitor_match {
+						MonitorMatch::Solana(solana_match) => todo!(),
 						MonitorMatch::EVM(evm_match) => &evm_match.monitor.name,
 						MonitorMatch::Stellar(stellar_match) => &stellar_match.monitor.name,
 					};
