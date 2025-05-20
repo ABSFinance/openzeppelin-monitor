@@ -23,6 +23,10 @@ pub enum FilterError {
 	#[error("Internal error: {0}")]
 	InternalError(ErrorContext),
 
+	/// Errors specific to Solana blockchain
+	#[error("Solana error: {0}")]
+	SolanaError(ErrorContext),
+
 	/// Other errors that don't fit into the categories above
 	#[error(transparent)]
 	Other(#[from] anyhow::Error),
@@ -55,6 +59,15 @@ impl FilterError {
 	) -> Self {
 		Self::InternalError(ErrorContext::new_with_log(msg, source, metadata))
 	}
+
+	// Solana-specific error
+	pub fn solana_error(
+		msg: impl Into<String>,
+		source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
+		metadata: Option<HashMap<String, String>>,
+	) -> Self {
+		Self::SolanaError(ErrorContext::new_with_log(msg, source, metadata))
+	}
 }
 
 impl TraceableError for FilterError {
@@ -63,6 +76,7 @@ impl TraceableError for FilterError {
 			Self::BlockTypeMismatch(ctx) => ctx.trace_id.clone(),
 			Self::NetworkError(ctx) => ctx.trace_id.clone(),
 			Self::InternalError(ctx) => ctx.trace_id.clone(),
+			Self::SolanaError(ctx) => ctx.trace_id.clone(),
 			Self::Other(_) => Uuid::new_v4().to_string(),
 		}
 	}

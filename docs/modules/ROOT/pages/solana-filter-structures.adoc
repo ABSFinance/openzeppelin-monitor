@@ -1,0 +1,300 @@
+= Solana Filter Structures
+:page-layout: article
+:page-type: reference
+
+== Overview
+
+The Solana filter structures are designed to handle Solana-specific monitoring requirements, including instruction decoding, account tracking, and transaction parsing capabilities
+
+== Core Structures
+
+=== Transaction Filter
+
+[source,rust]
+----
+pub struct SolanaTransactionFilter {
+    pub metadata: TransactionMetadata,      // Transaction context and metadata
+    pub instructions: Vec<Instruction>,     // Instructions to process
+    pub nested_instructions: NestedInstructions, // Nested instruction support
+    pub metrics: Arc<MetricsCollection>     // Processing metrics
+}
+----
+
+=== Instruction Filter
+
+[source,rust]
+----
+pub struct InstructionFilter {
+    pub metadata: InstructionMetadata,      // Instruction context
+    pub program_id: Pubkey,                 // Program ID to monitor
+    pub data: Vec<u8>,                      // Instruction data pattern
+    pub accounts: Vec<AccountMeta>,         // Account patterns
+    pub nested_depth: Option<u32>           // Nested instruction depth
+}
+----
+
+=== Instruction Decoding
+
+[source,rust]
+----
+pub trait InstructionDecoder<'a> {
+    type InstructionType;
+    
+    fn decode_instruction(
+        &self,
+        instruction: &'a Instruction,
+    ) -> Option<DecodedInstruction<Self::InstructionType>>;
+}
+
+pub struct DecodedInstruction<T> {
+    pub program_id: Pubkey,
+    pub data: T,
+    pub accounts: Vec<AccountMeta>
+}
+----
+
+=== Account State Tracking (Carbon Integration)
+
+[source,rust]
+----
+pub struct AccountState {
+    pub pubkey: Pubkey,
+    pub data: Vec<u8>,
+    pub owner: Pubkey,
+    pub lamports: u64,
+    pub executable: bool,
+    pub rent_epoch: u64
+}
+
+pub trait AccountStateTracker {
+    fn track_account_change(&self, account: &AccountState);
+    fn get_account_state(&self, pubkey: &Pubkey) -> Option<AccountState>;
+}
+----
+
+=== Transaction Parsing (Carbon Integration)
+
+[source,rust]
+----
+pub struct TransactionParser {
+    pub metadata: TransactionMetadata,
+    pub instructions: Vec<DecodedInstruction<Vec<u8>>>,
+    pub accounts: Vec<AccountMeta>,
+    pub recent_blockhash: Hash
+}
+
+impl TransactionParser {
+    pub fn parse(&self, transaction: &VersionedTransaction) -> Result<Self, ParseError>;
+    pub fn extract_instructions(&self) -> Vec<DecodedInstruction<Vec<u8>>>;
+    pub fn get_account_metas(&self) -> Vec<AccountMeta>;
+}
+----
+
+=== Nested Instruction Support
+
+[source,rust]
+----
+pub struct NestedInstructions(pub Vec<NestedInstruction>);
+
+pub struct NestedInstruction {
+    pub metadata: InstructionMetadata,      // Instruction context
+    pub instruction: Instruction,           // The instruction data
+    pub inner_instructions: NestedInstructions // Nested instructions
+}
+----
+
+=== Program Filter
+
+[source,rust]
+----
+pub struct SolanaProgramFilter {
+    pub program_id: Pubkey,                 // Program ID to monitor
+    pub instruction_patterns: Vec<InstructionPattern>, // Instruction patterns
+    pub account_patterns: Vec<AccountPattern>,        // Account patterns
+    pub nested_instruction_depth: Option<u32>,        // Max nested depth
+    pub cross_program_calls: bool           // Monitor cross-program calls
+}
+----
+
+=== Event Filter
+
+[source,rust]
+----
+pub struct SolanaEventFilter {
+    pub program_id: Pubkey,                 // Program ID to monitor
+    pub event_type: EventType,              // Type of event to monitor
+    pub data_pattern: Option<Vec<u8>>,      // Event data pattern
+    pub account_patterns: Vec<AccountPattern>, // Account patterns
+    pub nested_context: Option<NestedInstructions> // Nested instruction context
+}
+----
+
+== Supporting Types
+
+=== Transaction Metadata
+
+[source,rust]
+----
+pub struct TransactionMetadata {
+    pub slot: u64,                          // Transaction slot
+    pub signature: Signature,               // Transaction signature
+    pub fee_payer: Pubkey,                  // Fee payer account
+    pub block_time: Option<i64>,            // Block timestamp
+    pub status: TransactionStatus           // Transaction status
+}
+----
+
+=== Instruction Metadata
+
+[source,rust]
+----
+pub struct InstructionMetadata {
+    pub transaction_metadata: TransactionMetadata, // Transaction context
+    pub stack_height: u32,                  // Instruction stack depth
+    pub index: u32                          // Instruction index
+}
+----
+
+=== Instruction Pattern
+
+[source,rust]
+----
+pub struct InstructionPattern {
+    pub data_pattern: Vec<u8>,              // Instruction data pattern
+    pub account_patterns: Vec<AccountPattern>, // Account patterns
+    pub program_id: Option<Pubkey>,         // Program ID constraint
+    pub nested_depth: Option<u32>           // Nested depth constraint
+}
+----
+
+=== Account Pattern
+
+[source,rust]
+----
+pub struct AccountPattern {
+    pub pubkey: Pubkey,                     // Account public key
+    pub data_size: Option<usize>,           // Expected data size
+    pub owner: Option<Pubkey>,              // Expected owner program
+    pub is_signer: Option<bool>,            // Signer requirement
+    pub is_writable: Option<bool>           // Writable requirement
+}
+----
+
+=== Metrics Collection
+
+[source,rust]
+----
+pub struct SolanaMetrics {
+    pub instructions_processed: usize,
+    pub transactions_processed: usize,
+    pub accounts_tracked: usize,
+    pub program_calls: usize,
+    pub processing_time_ms: u64
+}
+
+impl SolanaMetrics {
+    pub fn record_instruction_processed(&mut self);
+    pub fn record_transaction_processed(&mut self);
+    pub fn record_account_tracked(&mut self);
+    pub fn record_program_call(&mut self);
+    pub fn record_processing_time(&mut self, duration: Duration);
+}
+----
+
+=== Error Handling (Carbon Integration)
+
+[source,rust]
+----
+#[derive(Debug, thiserror::Error)]
+pub enum SolanaFilterError {
+    #[error("Failed to decode instruction: {0}")]
+    InstructionDecodeError(String),
+    
+    #[error("Failed to parse transaction: {0}")]
+    TransactionParseError(String),
+    
+    #[error("Account state error: {0}")]
+    AccountStateError(String),
+    
+    #[error("Program error: {0}")]
+    ProgramError(String)
+}
+----
+
+== Block Filter Integration
+
+[source,rust]
+----
+pub struct SolanaBlockFilter {
+    helpers: SolanaFilterHelpers,
+    instruction_decoder: Box<dyn InstructionDecoder>,
+    account_tracker: Box<dyn AccountStateTracker>,
+    transaction_parser: TransactionParser,
+    metrics: SolanaMetrics
+}
+
+impl BlockFilter for SolanaBlockFilter {
+    async fn filter_block(
+        &self,
+        client: &Self::Client,
+        network: &Network,
+        block: &BlockType,
+        monitors: &[Monitor],
+        contract_specs: Option<&[(String, ContractSpec)]>,
+    ) -> Result<Vec<MonitorMatch>, FilterError> {
+        // 1. Parse transactions using Carbon's parser
+        // 2. Decode instructions using Carbon's decoder
+        // 3. Track account states using Carbon's tracker
+        // 4. Record metrics using Carbon's metrics
+        // 5. Return matches based on monitor conditions
+    }
+}
+----
+
+== Usage Examples
+
+=== Transaction Processing
+
+[source,rust]
+----
+let filter = SolanaTransactionFilter {
+    metadata: TransactionMetadata {
+        slot: 12345,
+        signature: signature,
+        fee_payer: pubkey,
+        block_time: Some(1234567890),
+        status: TransactionStatus::Success
+    },
+    instructions: vec![instruction],
+    nested_instructions: NestedInstructions::default(),
+    metrics: Arc::new(MetricsCollection::default())
+};
+----
+
+=== Nested Instruction Processing
+
+[source,rust]
+----
+let nested = NestedInstruction {
+    metadata: InstructionMetadata {
+        transaction_metadata: tx_metadata,
+        stack_height: 1,
+        index: 0
+    },
+    instruction: instruction,
+    inner_instructions: NestedInstructions::default()
+};
+----
+
+== Implementation Notes
+
+* All filters implement the `Serialize` and `Deserialize` traits for JSON serialization
+* Filters support nested instruction processing with configurable depth
+* Pattern matching supports both exact matches and partial matches
+* Metrics collection tracks processing performance and statistics
+* Cross-program invocation tracking is supported
+* All filters integrate with the monitoring pipeline
+* Error handling follows Carbon's pattern with specific error types
+* Account state tracking uses Carbon's robust tracking system
+* Instruction decoding leverages Carbon's decoder infrastructure
+* Transaction parsing utilizes Carbon's parser components 
