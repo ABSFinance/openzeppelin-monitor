@@ -5,6 +5,7 @@
 //! - Generic BlockFilter trait
 //! - EVM-specific implementation
 //! - Stellar-specific implementation
+//! - Solana-specific implementation
 
 pub mod evm {
 	pub mod evaluator;
@@ -13,6 +14,10 @@ pub mod evm {
 }
 pub mod stellar {
 	pub mod evaluator;
+	pub mod filter;
+	pub mod helpers;
+}
+pub mod solana {
 	pub mod filter;
 	pub mod helpers;
 }
@@ -25,8 +30,8 @@ use crate::{
 };
 pub use evm::evaluator::{EVMArgs, EVMConditionEvaluator};
 pub use evm::filter::EVMBlockFilter;
-pub use stellar::evaluator::{StellarArgs, StellarConditionEvaluator};
-pub use stellar::filter::{EventMap, StellarBlockFilter};
+pub use solana::filter::SolanaBlockFilter;
+pub use stellar::filter::StellarBlockFilter;
 
 /// Trait for filtering blockchain data
 ///

@@ -136,44 +136,43 @@ impl NotificationService {
 				notifier.notify(&message).await?;
 			}
 			TriggerType::Script => {
-				let notifier = ScriptNotifier::from_config(&trigger.config)?;
-				let monitor_name = match monitor_match {
-					MonitorMatch::EVM(evm_match) => &evm_match.monitor.name,
-					MonitorMatch::Stellar(stellar_match) => &stellar_match.monitor.name,
-				};
-				let script_path = match &trigger.config {
-					TriggerTypeConfig::Script { script_path, .. } => script_path,
-					_ => {
-						return Err(NotificationError::config_error(
-							"Invalid script configuration".to_string(),
-							None,
-							None,
-						))
-					}
-				};
-				let script = trigger_scripts
-					.get(&format!(
-						"{}|{}",
-						normalize_string(monitor_name),
-						script_path
-					))
-					.ok_or_else(|| {
-						NotificationError::config_error(
-							"Script content not found".to_string(),
-							None,
-							None,
-						)
-					});
-				let script_content = match &script {
-					Ok(content) => content,
-					Err(e) => {
-						return Err(NotificationError::config_error(e.to_string(), None, None))
-					}
-				};
+				let notifier = ScriptNotifier::from_config(&trigger.config);
+				if let Some(notifier) = notifier {
+					let monitor_name = match monitor_match {
+						MonitorMatch::Solana(solana_match) => &solana_match.monitor.name,
+						MonitorMatch::EVM(evm_match) => &evm_match.monitor.name,
+						MonitorMatch::Stellar(stellar_match) => &stellar_match.monitor.name,
+					};
+					let script_path = match &trigger.config {
+						TriggerTypeConfig::Script { script_path, .. } => script_path,
+						_ => {
+							return Err(NotificationError::config_error(
+								"Invalid script configuration".to_string(),
+								None,
+								None,
+							))
+						}
+					};
+					let script = trigger_scripts
+						.get(&format!("{}|{}", monitor_name, script_path))
+						.ok_or_else(|| {
+							NotificationError::config_error(
+								"Script content not found".to_string(),
+								None,
+								None,
+							)
+						});
+					let script_content = match &script {
+						Ok(content) => content,
+						Err(e) => {
+							return Err(NotificationError::config_error(e.to_string(), None, None))
+						}
+					};
 
-				notifier
-					.script_notify(monitor_match, script_content)
-					.await?;
+					notifier
+						.script_notify(monitor_match, script_content)
+						.await?;
+				}
 			}
 		}
 		Ok(())

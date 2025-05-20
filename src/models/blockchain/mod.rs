@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod evm;
+pub mod solana;
 pub mod stellar;
 
 /// Supported blockchain platform types
@@ -19,7 +20,7 @@ pub enum BlockChainType {
 	Stellar,
 	/// Midnight blockchain (not yet implemented)
 	Midnight,
-	/// Solana blockchain (not yet implemented)
+	/// Solana blockchain
 	Solana,
 }
 
@@ -36,6 +37,11 @@ pub enum BlockType {
 	/// # Note
 	/// Box is used here to equalize the enum variants
 	Stellar(Box<stellar::StellarBlock>),
+	/// Solana block data
+	///
+	/// # Note
+	/// Box is used here to equalize the enum variants
+	Solana(Box<solana::SolanaBlock>),
 }
 
 impl BlockType {
@@ -43,6 +49,7 @@ impl BlockType {
 		match self {
 			BlockType::EVM(b) => b.number(),
 			BlockType::Stellar(b) => b.number(),
+			BlockType::Solana(b) => Some(b.slot()),
 		}
 	}
 }
@@ -53,7 +60,9 @@ pub enum TransactionType {
 	/// EVM transaction
 	EVM(evm::EVMTransaction),
 	/// Stellar transaction
-	Stellar(Box<stellar::StellarTransaction>),
+	Stellar(stellar::StellarTransaction),
+	/// Solana transaction
+	Solana(solana::SolanaTransaction),
 }
 
 /// Contract spec from different blockchain platforms
@@ -79,6 +88,11 @@ pub enum MonitorMatch {
 	/// # Note
 	/// Box is used here to equalize the enum variants
 	Stellar(Box<stellar::StellarMonitorMatch>),
+	/// Matched conditions from Solana chains
+	///
+	/// # Note
+	/// Box is used here to equalize the enum variants
+	Solana(Box<solana::SolanaMonitorMatch>),
 }
 
 /// Structure to hold block processing results
