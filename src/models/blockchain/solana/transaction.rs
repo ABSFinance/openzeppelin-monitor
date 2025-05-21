@@ -1,19 +1,19 @@
 use {
 	crate::models::blockchain::solana::block::SolanaBlock,
-	async_trait::async_trait,
 	serde::{Deserialize, Serialize},
 	solana_account_decoder::parse_token::UiTokenAmount,
 	solana_sdk::{
-		instruction::{AccountMeta, Instruction},
+		instruction::AccountMeta,
 		message::{v0::LoadedAddresses, Message, VersionedMessage},
 		pubkey::Pubkey,
 		signature::Signature,
-		transaction::{Result as TransactionResult, Transaction},
+		transaction::Result as TransactionResult,
 		transaction_context::TransactionReturnData,
 	},
 	solana_transaction_status::{InnerInstructions, Rewards},
-	std::sync::Arc,
 };
+
+use super::instruction::DecodedInstruction;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TransactionTokenBalance {
@@ -25,7 +25,7 @@ pub struct TransactionTokenBalance {
 }
 
 /// Transaction status metadata containing execution status, fees, balances, etc.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TransactionStatusMeta {
 	/// Transaction execution status
 	pub status: TransactionResult<()>,
@@ -72,88 +72,8 @@ impl Default for TransactionStatusMeta {
 	}
 }
 
-/// Serializable version of transaction status metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableTransactionMeta {
-	/// Error if transaction failed
-	pub err: Option<String>,
-	/// Fee paid for the transaction
-	pub fee: u64,
-	/// Pre-transaction account balances
-	pub pre_balances: Vec<u64>,
-	/// Post-transaction account balances
-	pub post_balances: Vec<u64>,
-	/// Inner instructions if any
-	pub inner_instructions: Vec<SerializableInnerInstruction>,
-	/// Log messages if any
-	pub log_messages: Option<Vec<String>>,
-	/// Pre-transaction token balances if any
-	pub pre_token_balances: Option<Vec<SerializableTokenBalance>>,
-	/// Post-transaction token balances if any
-	pub post_token_balances: Option<Vec<SerializableTokenBalance>>,
-}
-
-impl Default for SerializableTransactionMeta {
-	fn default() -> Self {
-		Self {
-			err: None,
-			fee: 0,
-			pre_balances: Vec::new(),
-			post_balances: Vec::new(),
-			inner_instructions: Vec::new(),
-			log_messages: None,
-			pre_token_balances: None,
-			post_token_balances: None,
-		}
-	}
-}
-
-/// Serializable version of inner instruction
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableInnerInstruction {
-	/// Index of the instruction
-	pub index: u8,
-	/// The instruction data
-	pub instruction: SerializableInstruction,
-}
-
-/// Serializable version of instruction
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableInstruction {
-	/// Program ID that owns the instruction
-	pub program_id: Pubkey,
-	/// Accounts involved in the instruction
-	pub accounts: Vec<u8>,
-	/// Instruction data
-	pub data: Vec<u8>,
-}
-
-/// Serializable version of token balance
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableTokenBalance {
-	/// Account index
-	pub account_index: u8,
-	/// Token mint address
-	pub mint: String,
-	/// Token owner address
-	pub owner: String,
-	/// Token amount
-	pub ui_token_amount: SerializableTokenAmount,
-}
-
-/// Serializable version of token amount
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableTokenAmount {
-	/// Raw amount as string
-	pub amount: String,
-	/// Number of decimals
-	pub decimals: u8,
-	/// UI amount if available
-	pub ui_amount: Option<f64>,
-}
-
 /// Metadata associated with a Solana transaction
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TransactionMetadata {
 	/// The slot number in which this transaction was processed
 	pub slot: u64,
@@ -182,19 +102,8 @@ impl Default for TransactionMetadata {
 	}
 }
 
-/// A decoded instruction containing program ID, data, and associated accounts
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DecodedInstruction<T> {
-	/// The program ID that owns the instruction
-	pub program_id: Pubkey,
-	/// The decoded data payload for the instruction
-	pub data: T,
-	/// The accounts involved in the instruction
-	pub accounts: Vec<AccountMeta>,
-}
-
 /// Represents a Solana transaction with its metadata and instructions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SolanaTransaction {
 	/// Metadata about the transaction
 	pub metadata: TransactionMetadata,
@@ -228,7 +137,7 @@ impl SolanaTransaction {
 						.map(|&idx| AccountMeta {
 							pubkey: tx.message.account_keys[idx as usize],
 							is_signer: tx.message.is_signer(idx as usize),
-							is_writable: tx.message.is_writable(idx as usize),
+							is_writable: tx.message.is_maybe_writable(idx as usize, None),
 						})
 						.collect(),
 				})
@@ -277,74 +186,131 @@ impl SolanaTransaction {
 	}
 }
 
-/// Input type for transaction processing
-#[derive(Debug, Clone)]
-pub struct TransactionInput {
-	/// Transaction metadata
-	pub metadata: TransactionMetadata,
-	/// Transaction instructions
-	pub instructions: Vec<Instruction>,
-}
+#[cfg(test)]
+mod tests {
+	use crate::utils::tests::solana::transaction::TransactionBuilder;
 
-/// A trait for processing transactions
-#[async_trait]
-pub trait TransactionProcessor<Input = TransactionInput>: Send + Sync {
-	type Output;
+	use super::*;
+	use solana_sdk::{
+		commitment_config::CommitmentConfig,
+		instruction::{AccountMeta, Instruction},
+		message::Message,
+		pubkey::Pubkey,
+		signature::{Keypair, Signature, Signer},
+	};
 
-	/// Process a transaction with the given input
-	async fn process(
-		&mut self,
-		input: Input,
-		metrics: Arc<MetricsCollection>,
-	) -> Result<Self::Output, TransactionError>;
-}
+	// Helper function to create a test transaction
+	fn create_test_transaction() -> SolanaTransaction {
+		let fee_payer = Keypair::new();
+		let program_id = Pubkey::new_unique();
+		let account1 = Pubkey::new_unique();
+		let account2 = Pubkey::new_unique();
 
-/// A pipe for processing transactions
-pub struct TransactionPipe<P: TransactionProcessor<TransactionInput>> {
-	processor: P,
-}
-
-impl<P: TransactionProcessor<TransactionInput>> TransactionPipe<P> {
-	/// Creates a new transaction pipe with the given processor
-	pub fn new(processor: P) -> Self {
-		Self { processor }
-	}
-
-	/// Process a transaction
-	pub async fn process(
-		&mut self,
-		metadata: TransactionMetadata,
-		instructions: Vec<Instruction>,
-		metrics: Arc<MetricsCollection>,
-	) -> Result<P::Output, TransactionError> {
-		let input = TransactionInput {
-			metadata,
-			instructions,
+		let instruction = Instruction {
+			program_id,
+			accounts: vec![
+				AccountMeta::new(account1, true),
+				AccountMeta::new(account2, false),
+			],
+			data: vec![1, 2, 3, 4],
 		};
-		self.processor.process(input, metrics).await
+
+		let message = Message::new(&[instruction], Some(&fee_payer.pubkey()));
+		let signature = Signature::new_unique();
+
+		TransactionBuilder::new()
+			.slot(12345)
+			.signature(signature)
+			.fee_payer(fee_payer.pubkey())
+			.message(VersionedMessage::Legacy(message))
+			.block_time(1678901234)
+			.instruction(DecodedInstruction {
+				program_id,
+				data: vec![1, 2, 3, 4],
+				accounts: vec![
+					AccountMeta::new(account1, true),
+					AccountMeta::new(account2, false),
+				],
+			})
+			.build()
 	}
-}
 
-/// A collection of metrics for transaction processing
-#[derive(Debug, Clone, Default)]
-pub struct MetricsCollection {
-	/// Number of instructions processed
-	pub instructions_processed: usize,
-	/// Number of transactions processed
-	pub transactions_processed: usize,
-	/// Processing time in milliseconds
-	pub processing_time_ms: u64,
-}
+	#[test]
+	fn test_signature() {
+		let tx = create_test_transaction();
+		let signature = tx.signature();
+		assert_eq!(signature, &tx.metadata.signature);
+	}
 
-/// Errors that can occur during transaction processing
-#[derive(Debug, thiserror::Error)]
-pub enum TransactionError {
-	#[error("Failed to process transaction: {0}")]
-	ProcessingError(String),
-	#[error("Invalid instruction data: {0}")]
-	InvalidInstructionData(String),
-	#[error("Missing required account: {0}")]
-	MissingAccount(Pubkey),
-	#[error("Invalid program ID: {0}")]
-	InvalidProgramId(Pubkey),
+	#[test]
+	fn test_slot() {
+		let tx = create_test_transaction();
+		let slot = tx.slot();
+		assert_eq!(slot, tx.metadata.slot);
+	}
+
+	#[test]
+	fn test_fee_payer() {
+		let tx = create_test_transaction();
+		let fee_payer = tx.fee_payer();
+		assert_eq!(fee_payer, &tx.metadata.fee_payer);
+	}
+
+	#[test]
+	fn test_meta() {
+		let tx = create_test_transaction();
+		let meta = tx.meta();
+		assert_eq!(meta, &tx.metadata.meta);
+	}
+
+	#[test]
+	fn test_message() {
+		let tx = create_test_transaction();
+		let message = tx.message();
+		assert_eq!(message, &tx.metadata.message);
+	}
+
+	#[test]
+	fn test_block_time() {
+		let tx = create_test_transaction();
+		let block_time = tx.block_time();
+		assert_eq!(block_time, tx.metadata.block_time);
+	}
+
+	#[test]
+	fn test_instructions() {
+		let tx = create_test_transaction();
+		let instructions = tx.instructions();
+		assert_eq!(instructions, &tx.instructions);
+	}
+
+	#[test]
+	fn test_transaction_creation_from_block() {
+		let block = SolanaBlock {
+			slot: 12345,
+			blockhash: Signature::new_unique().to_string(),
+			parent_slot: 12344,
+			transactions: vec![solana_sdk::transaction::Transaction {
+				signatures: vec![Signature::new_unique()],
+				message: Message::new(
+					&[Instruction {
+						program_id: Pubkey::new_unique(),
+						accounts: vec![AccountMeta::new(Pubkey::new_unique(), true)],
+						data: vec![1, 2, 3, 4],
+					}],
+					Some(&Pubkey::new_unique()),
+				),
+			}],
+			block_time: Some(1678901234),
+			block_height: Some(12345),
+			rewards: None,
+			commitment: CommitmentConfig::confirmed(),
+		};
+
+		let tx = SolanaTransaction::new(&block, 0).unwrap();
+		assert_eq!(tx.slot(), block.slot);
+		assert_eq!(tx.block_time(), block.block_time);
+		assert_eq!(tx.instructions().len(), 1);
+		assert_eq!(tx.instructions()[0].data, vec![1, 2, 3, 4]);
+	}
 }

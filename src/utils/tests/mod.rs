@@ -14,6 +14,11 @@ pub mod builders {
 	pub mod stellar {
 		pub mod monitor;
 	}
+	pub mod solana {
+		pub mod instruction;
+		pub mod monitor;
+		pub mod transaction;
+	}
 
 	// Chain agnostic test helpers
 	pub mod network;

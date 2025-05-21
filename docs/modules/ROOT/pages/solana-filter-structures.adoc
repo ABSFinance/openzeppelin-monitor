@@ -4,7 +4,7 @@
 
 == Overview
 
-The Solana filter structures are designed to handle Solana-specific monitoring requirements, including instruction decoding, account tracking, and transaction parsing capabilities
+The Solana filter structures are designed to handle Solana-specific monitoring requirements, including instruction decoding, account tracking, and transaction parsing capabilities.
 
 == Core Structures
 
@@ -15,8 +15,7 @@ The Solana filter structures are designed to handle Solana-specific monitoring r
 pub struct SolanaTransactionFilter {
     pub metadata: TransactionMetadata,      // Transaction context and metadata
     pub instructions: Vec<Instruction>,     // Instructions to process
-    pub nested_instructions: NestedInstructions, // Nested instruction support
-    pub metrics: Arc<MetricsCollection>     // Processing metrics
+    pub nested_instructions: NestedInstructions // Nested instruction support
 }
 ----
 
@@ -53,7 +52,7 @@ pub struct DecodedInstruction<T> {
 }
 ----
 
-=== Account State Tracking (Carbon Integration)
+=== Account State Tracking
 
 [source,rust]
 ----
@@ -72,7 +71,7 @@ pub trait AccountStateTracker {
 }
 ----
 
-=== Transaction Parsing (Carbon Integration)
+=== Transaction Parsing
 
 [source,rust]
 ----
@@ -180,28 +179,7 @@ pub struct AccountPattern {
 }
 ----
 
-=== Metrics Collection
-
-[source,rust]
-----
-pub struct SolanaMetrics {
-    pub instructions_processed: usize,
-    pub transactions_processed: usize,
-    pub accounts_tracked: usize,
-    pub program_calls: usize,
-    pub processing_time_ms: u64
-}
-
-impl SolanaMetrics {
-    pub fn record_instruction_processed(&mut self);
-    pub fn record_transaction_processed(&mut self);
-    pub fn record_account_tracked(&mut self);
-    pub fn record_program_call(&mut self);
-    pub fn record_processing_time(&mut self, duration: Duration);
-}
-----
-
-=== Error Handling (Carbon Integration)
+=== Error Handling
 
 [source,rust]
 ----
@@ -229,8 +207,7 @@ pub struct SolanaBlockFilter {
     helpers: SolanaFilterHelpers,
     instruction_decoder: Box<dyn InstructionDecoder>,
     account_tracker: Box<dyn AccountStateTracker>,
-    transaction_parser: TransactionParser,
-    metrics: SolanaMetrics
+    transaction_parser: TransactionParser
 }
 
 impl BlockFilter for SolanaBlockFilter {
@@ -242,11 +219,10 @@ impl BlockFilter for SolanaBlockFilter {
         monitors: &[Monitor],
         contract_specs: Option<&[(String, ContractSpec)]>,
     ) -> Result<Vec<MonitorMatch>, FilterError> {
-        // 1. Parse transactions using Carbon's parser
-        // 2. Decode instructions using Carbon's decoder
-        // 3. Track account states using Carbon's tracker
-        // 4. Record metrics using Carbon's metrics
-        // 5. Return matches based on monitor conditions
+        // 1. Parse transactions using parser
+        // 2. Decode instructions using decoder
+        // 3. Track account states using tracker
+        // 4. Return matches based on monitor conditions
     }
 }
 ----
@@ -266,8 +242,7 @@ let filter = SolanaTransactionFilter {
         status: TransactionStatus::Success
     },
     instructions: vec![instruction],
-    nested_instructions: NestedInstructions::default(),
-    metrics: Arc::new(MetricsCollection::default())
+    nested_instructions: NestedInstructions::default()
 };
 ----
 
@@ -291,10 +266,495 @@ let nested = NestedInstruction {
 * All filters implement the `Serialize` and `Deserialize` traits for JSON serialization
 * Filters support nested instruction processing with configurable depth
 * Pattern matching supports both exact matches and partial matches
-* Metrics collection tracks processing performance and statistics
 * Cross-program invocation tracking is supported
 * All filters integrate with the monitoring pipeline
 * Error handling follows Carbon's pattern with specific error types
 * Account state tracking uses Carbon's robust tracking system
 * Instruction decoding leverages Carbon's decoder infrastructure
-* Transaction parsing utilizes Carbon's parser components 
+* Transaction parsing utilizes Carbon's parser components
+
+== Comparison with Other Chain Filters
+
+=== Key Differences
+
+==== Instruction-Based Architecture
+[source,rust]
+----
+// Solana: Instruction-based filtering
+pub struct InstructionFilter {
+    pub program_id: Pubkey,
+    pub data: Vec<u8>,
+    pub accounts: Vec<AccountMeta>
+}
+
+// EVM: Transaction-based filtering
+pub struct TransactionFilter {
+    pub from: Address,
+    pub to: Address,
+    pub data: Vec<u8>
+}
+----
+
+==== Nested Instruction Support
+[source,rust]
+----
+// Solana: Supports nested instructions
+pub struct NestedInstruction {
+    pub metadata: InstructionMetadata,
+    pub instruction: Instruction,
+    pub inner_instructions: NestedInstructions
+}
+
+// EVM: No nested instruction concept
+pub struct Transaction {
+    pub from: Address,
+    pub to: Address,
+    pub data: Vec<u8>
+}
+----
+
+==== Account Model
+[source,rust]
+----
+// Solana: Account-based with metadata
+pub struct AccountPattern {
+    pub pubkey: Pubkey,
+    pub data_size: Option<usize>,
+    pub owner: Option<Pubkey>,
+    pub is_signer: Option<bool>,
+    pub is_writable: Option<bool>
+}
+
+// EVM: Simple address-based
+pub struct AddressPattern {
+    pub address: Address,
+    pub is_contract: bool
+}
+----
+
+=== Implementation Differences
+
+1. **Transaction Processing**
+   - Solana: Processes transactions as a sequence of instructions
+   - EVM: Processes transactions as atomic units with function calls
+
+2. **State Tracking**
+   - Solana: Tracks account state changes at instruction level
+   - EVM: Tracks state changes at transaction level
+
+3. **Event Handling**
+   - Solana: Events are part of instruction execution
+   - EVM: Events are separate from transaction execution
+
+4. **Program Interaction**
+   - Solana: Supports cross-program invocation (CPI)
+   - EVM: Uses contract-to-contract calls
+
+=== Advantages of Solana's Approach
+
+1. **Granular Control**
+   - Instruction-level filtering provides more precise monitoring
+   - Better support for complex program interactions
+
+2. **Nested Processing**
+   - Can track program calls at any depth
+   - Better support for complex transaction flows
+
+3. **Account-Centric**
+   - More detailed account state tracking
+   - Better support for Solana's account model
+
+=== Challenges in Solana's Approach
+
+1. **Complexity**
+   - More complex filtering logic due to nested instructions
+   - Requires more sophisticated state tracking
+
+2. **Performance**
+   - Need to process more granular data
+   - Higher computational overhead
+
+3. **Implementation**
+   - More complex error handling
+   - More sophisticated testing requirements
+
+== Carbon Integration
+
+=== Enhanced Nested Instruction Support
+
+[source,rust]
+----
+pub struct NestedInstructions(pub Vec<NestedInstruction>);
+
+impl NestedInstructions {
+    pub fn iter(&self) -> std::slice::Iter<NestedInstruction>;
+    pub fn len(&self) -> usize;
+    pub fn is_empty(&self) -> bool;
+    pub fn push(&mut self, nested_instruction: NestedInstruction);
+}
+
+impl From<InstructionsWithMetadata> for NestedInstructions {
+    fn from(instructions: InstructionsWithMetadata) -> Self;
+}
+----
+
+=== Integration Points
+
+1. **Instruction Decoding**
+   - Use Carbon's `InstructionDecoder` trait for consistent decoding
+   - Leverage Carbon's decoder infrastructure for program-specific decoding
+
+2. **Nested Instruction Processing**
+   - Adopt Carbon's `NestedInstructions` implementation
+   - Use Carbon's instruction pipeline for processing
+
+3. **Account State Tracking**
+   - Integrate with Carbon's account state tracking system
+   - Use Carbon's account metadata structures
+
+4. **Transaction Parsing**
+   - Leverage Carbon's transaction parsing infrastructure
+   - Use Carbon's transaction metadata structures
+
+=== Implementation Guidelines
+
+1. **Decoder Integration**
+   ```rust
+   impl<'a> InstructionDecoder<'a> for SolanaInstructionDecoder {
+       type InstructionType = DecodedInstruction<Vec<u8>>;
+       
+       fn decode_instruction(
+           &self,
+           instruction: &'a Instruction
+       ) -> Option<DecodedInstruction<Self::InstructionType>> {
+           // Use Carbon's decoder infrastructure
+       }
+   }
+   ```
+
+2. **Processor Integration**
+   ```rust
+   impl Processor<InputType = InstructionProcessorInputType<DecodedInstruction<Vec<u8>>>> 
+   for SolanaInstructionProcessor {
+       async fn process(
+           &mut self,
+           input: InstructionProcessorInputType<DecodedInstruction<Vec<u8>>>,
+           metrics: Arc<MetricsCollection>
+       ) -> CarbonResult<()> {
+           // Process using Carbon's pipeline
+       }
+   }
+   ```
+
+3. **Nested Instruction Handling**
+   ```rust
+   impl From<InstructionsWithMetadata> for NestedInstructions {
+       fn from(instructions: InstructionsWithMetadata) -> Self {
+           // Use Carbon's conversion logic
+       }
+   }
+   ```
+
+=== Benefits of Carbon Integration
+
+1. **Consistent Processing**
+   - Unified instruction processing pipeline
+   - Standardized nested instruction handling
+   - Consistent error handling
+
+2. **Enhanced Capabilities**
+   - Access to Carbon's decoder infrastructure
+   - Leverage Carbon's program-specific decoders
+   - Use Carbon's account state tracking
+
+3. **Performance Optimization**
+   - Benefit from Carbon's optimized processing
+   - Use Carbon's caching mechanisms
+   - Leverage Carbon's parallel processing
+
+== Comparison with Other Chain Filters
+
+=== Key Differences
+
+==== Instruction-Based Architecture
+[source,rust]
+----
+// Solana: Instruction-based filtering
+pub struct InstructionFilter {
+    pub program_id: Pubkey,
+    pub data: Vec<u8>,
+    pub accounts: Vec<AccountMeta>
+}
+
+// EVM: Transaction-based filtering
+pub struct TransactionFilter {
+    pub from: Address,
+    pub to: Address,
+    pub data: Vec<u8>
+}
+----
+
+==== Nested Instruction Support
+[source,rust]
+----
+// Solana: Supports nested instructions
+pub struct NestedInstruction {
+    pub metadata: InstructionMetadata,
+    pub instruction: Instruction,
+    pub inner_instructions: NestedInstructions
+}
+
+// EVM: No nested instruction concept
+pub struct Transaction {
+    pub from: Address,
+    pub to: Address,
+    pub data: Vec<u8>
+}
+----
+
+==== Account Model
+[source,rust]
+----
+// Solana: Account-based with metadata
+pub struct AccountPattern {
+    pub pubkey: Pubkey,
+    pub data_size: Option<usize>,
+    pub owner: Option<Pubkey>,
+    pub is_signer: Option<bool>,
+    pub is_writable: Option<bool>
+}
+
+// EVM: Simple address-based
+pub struct AddressPattern {
+    pub address: Address,
+    pub is_contract: bool
+}
+----
+
+=== Implementation Differences
+
+1. **Transaction Processing**
+   - Solana: Processes transactions as a sequence of instructions
+   - EVM: Processes transactions as atomic units with function calls
+
+2. **State Tracking**
+   - Solana: Tracks account state changes at instruction level
+   - EVM: Tracks state changes at transaction level
+
+3. **Event Handling**
+   - Solana: Events are part of instruction execution
+   - EVM: Events are separate from transaction execution
+
+4. **Program Interaction**
+   - Solana: Supports cross-program invocation (CPI)
+   - EVM: Uses contract-to-contract calls
+
+=== Advantages of Solana's Approach
+
+1. **Granular Control**
+   - Instruction-level filtering provides more precise monitoring
+   - Better support for complex program interactions
+
+2. **Nested Processing**
+   - Can track program calls at any depth
+   - Better support for complex transaction flows
+
+3. **Account-Centric**
+   - More detailed account state tracking
+   - Better support for Solana's account model
+
+=== Challenges in Solana's Approach
+
+1. **Complexity**
+   - More complex filtering logic due to nested instructions
+   - Requires more sophisticated state tracking
+
+2. **Performance**
+   - Need to process more granular data
+   - Higher computational overhead
+
+3. **Implementation**
+   - More complex error handling
+   - More sophisticated testing requirements
+
+== Decoder Integration Strategy
+
+=== Decoder Structure
+
+[source,rust]
+----
+// Base decoder trait for all Solana program decoders
+pub trait SolanaProgramDecoder {
+    fn program_id(&self) -> Pubkey;
+    fn decode_instruction(&self, instruction: &Instruction) -> Option<DecodedInstruction>;
+}
+
+// Registry to manage all program decoders
+pub struct ProgramDecoderRegistry {
+    decoders: HashMap<Pubkey, Box<dyn SolanaProgramDecoder>>,
+}
+
+impl ProgramDecoderRegistry {
+    pub fn register_decoder(&mut self, decoder: Box<dyn SolanaProgramDecoder>);
+    pub fn get_decoder(&self, program_id: &Pubkey) -> Option<&dyn SolanaProgramDecoder>;
+}
+
+// Example program decoder implementation
+pub struct TokenProgramDecoder {
+    program_id: Pubkey,
+}
+
+impl SolanaProgramDecoder for TokenProgramDecoder {
+    fn program_id(&self) -> Pubkey {
+        self.program_id
+    }
+
+    fn decode_instruction(&self, instruction: &Instruction) -> Option<DecodedInstruction> {
+        // Program-specific decoding logic
+    }
+}
+----
+
+=== Integration Points
+
+1. **Program Decoder Registration**
+   ```rust
+   // In src/models/blockchain/solana/decoders/mod.rs
+   pub mod token_program;
+   pub mod system_program;
+   pub mod stake_program;
+   // ... other program decoders
+
+   pub fn register_decoders(registry: &mut ProgramDecoderRegistry) {
+       registry.register_decoder(Box::new(TokenProgramDecoder::new()));
+       registry.register_decoder(Box::new(SystemProgramDecoder::new()));
+       registry.register_decoder(Box::new(StakeProgramDecoder::new()));
+       // ... register other decoders
+   }
+   ```
+
+2. **Decoder Usage in Filter**
+   ```rust
+   // In src/services/filter/filters/solana/filter.rs
+   pub struct SolanaBlockFilter {
+       decoder_registry: ProgramDecoderRegistry,
+       // ... other fields
+   }
+
+   impl SolanaBlockFilter {
+       pub fn decode_program_instruction(
+           &self,
+           instruction: &Instruction
+       ) -> Option<DecodedInstruction> {
+           if let Some(decoder) = self.decoder_registry.get_decoder(&instruction.program_id) {
+               decoder.decode_instruction(instruction)
+           } else {
+               None
+           }
+       }
+   }
+   ```
+
+=== Supported Programs
+
+1. **Core Programs**
+   - System Program
+   - Token Program
+   - Token-2022 Program
+   - Stake Program
+   - Associated Token Account Program
+
+2. **DeFi Programs**
+   - Jupiter
+   - Raydium
+   - Orca
+   - Kamino
+   - Drift
+
+3. **NFT Programs**
+   - Metaplex Token Metadata
+   - Metaplex Core
+
+=== Implementation Steps
+
+1. **Create Decoder Structure**
+   - Set up decoder trait and registry
+   - Implement base decoder functionality
+   - Add program-specific decoders
+
+2. **Integrate with Carbon**
+   - Use Carbon's decoder infrastructure
+   - Leverage Carbon's program-specific decoders
+   - Maintain compatibility with Carbon's types
+
+3. **Add to Filter Pipeline**
+   - Register decoders in filter initialization
+   - Use decoders in instruction processing
+   - Handle unknown program cases
+
+=== Example Program Decoder
+
+[source,rust]
+----
+// Example: Token Program Decoder
+pub struct TokenProgramDecoder {
+    program_id: Pubkey,
+}
+
+impl TokenProgramDecoder {
+    pub fn new() -> Self {
+        Self {
+            program_id: spl_token::id(),
+        }
+    }
+}
+
+impl SolanaProgramDecoder for TokenProgramDecoder {
+    fn program_id(&self) -> Pubkey {
+        self.program_id
+    }
+
+    fn decode_instruction(&self, instruction: &Instruction) -> Option<DecodedInstruction> {
+        match instruction.data[0] {
+            0 => self.decode_initialize_mint(instruction),
+            1 => self.decode_initialize_account(instruction),
+            2 => self.decode_initialize_multisig(instruction),
+            // ... other instruction variants
+            _ => None,
+        }
+    }
+}
+----
+
+=== Integration with Carbon
+
+1. **Use Carbon's Decoders**
+   ```rust
+   use carbon::decoders::token_program::TokenProgramDecoder;
+   use carbon::decoders::system_program::SystemProgramDecoder;
+   // ... other Carbon decoders
+   ```
+
+2. **Maintain Compatibility**
+   ```rust
+   impl From<CarbonDecodedInstruction> for DecodedInstruction {
+       fn from(carbon_instruction: CarbonDecodedInstruction) -> Self {
+           // Convert Carbon's decoded instruction to our format
+       }
+   }
+   ```
+
+3. **Error Handling**
+   ```rust
+   #[derive(Debug, thiserror::Error)]
+   pub enum DecoderError {
+       #[error("Unknown program: {0}")]
+       UnknownProgram(Pubkey),
+       
+       #[error("Invalid instruction data: {0}")]
+       InvalidInstructionData(String),
+       
+       #[error("Carbon decoder error: {0}")]
+       CarbonError(#[from] carbon::error::Error),
+   }
+   ``` 

@@ -9,6 +9,7 @@
 
 pub mod blockchain;
 pub mod blockwatcher;
+pub mod decoders;
 pub mod filter;
 pub mod notification;
 pub mod trigger;
