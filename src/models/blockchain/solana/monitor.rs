@@ -4,7 +4,9 @@ use {
 			MatchConditions, Monitor, SolanaInstructionMetadata, SolanaTransaction,
 			SolanaTransactionMetadata,
 		},
-		services::decoders::solana::{AccountDecoder, InstructionDecoder},
+		services::decoders::solana::{
+			AccountDecoder, AccountType, InstructionDecoder, InstructionType,
+		},
 	},
 	serde::{Deserialize, Serialize},
 	solana_sdk::{
@@ -145,19 +147,25 @@ impl SolanaMonitorMatch {
 	}
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
-pub struct SolanaDecoder {
-	pub account_decoder: Box<dyn AccountDecoder>,
-	pub instruction_decoder: Box<dyn InstructionDecoder>,
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub enum DecoderType {
+	Account(AccountType),
+	Instruction(InstructionType),
 }
 
-/// Contract specification for an EVM smart contract
+impl Default for DecoderType {
+	fn default() -> Self {
+		Self::Account(AccountType::SystemProgram)
+	}
+}
+
+/// Contract specification for a Solana program
 ///
-/// This structure represents the parsed specification of an EVM smart contract,
-/// following the Ethereum Contract ABI format. It contains information about all
-/// callable functions in the contract.
+/// This structure represents the parsed specification of a Solana program,
+/// containing information about account and instruction decoders that can be used
+/// to decode program data and instructions.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
-pub struct ContractSpec(SolanaDecoder);
+pub struct ContractSpec(DecoderType);
 
 #[cfg(test)]
 mod tests {
