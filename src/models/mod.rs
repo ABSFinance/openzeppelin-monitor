@@ -7,7 +7,7 @@
 //! - `core`: Core domain models (Monitor, Network, Trigger)
 //! - `security`: Security models (Secret)
 
-mod blockchain;
+pub mod blockchain;
 mod config;
 mod core;
 mod security;
@@ -29,6 +29,12 @@ pub use blockchain::stellar::{
 	StellarFormattedContractSpec, StellarLedgerInfo, StellarMatchArguments, StellarMatchParamEntry,
 	StellarMatchParamsMap, StellarMonitorMatch, StellarParsedOperationResult, StellarTransaction,
 	StellarTransactionInfo,
+};
+
+pub use blockchain::solana::{
+	SolanaBlock, SolanaContractSpec, SolanaDecodedInstruction, SolanaInstructionDecoder,
+	SolanaInstructionMetadata, SolanaMonitorMatch, SolanaReward, SolanaTransaction,
+	SolanaTransactionMetadata, SolanaTransactionStatusMeta,
 };
 
 // Re-export core types

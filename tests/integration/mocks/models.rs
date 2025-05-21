@@ -2,7 +2,7 @@ use mockito::{Mock, Server};
 use openzeppelin_monitor::{
 	models::{
 		BlockChainType, BlockType, EVMBlock, EVMReceiptLog, EVMTransactionReceipt, Network,
-		StellarBlock, StellarLedgerInfo, StellarTransaction, StellarTransactionInfo,
+		SolanaBlock, StellarBlock, StellarLedgerInfo, StellarTransaction, StellarTransactionInfo,
 		TransactionType,
 	},
 	utils::tests::{
@@ -115,6 +115,16 @@ pub fn create_test_block(chain: BlockChainType, block_number: u64) -> BlockType 
 				..Default::default()
 			})))
 		}
+		BlockChainType::Solana => BlockType::Solana(Box::new(SolanaBlock::new(
+			block_number,
+			"test_hash".to_string(),
+			block_number - 1,
+			Some(1678901234),
+			Some(block_number),
+			vec![],
+			None,
+			solana_sdk::commitment_config::CommitmentConfig::confirmed(),
+		))),
 		_ => panic!("Unsupported chain"),
 	}
 }

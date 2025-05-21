@@ -1,9 +1,12 @@
 use {
+	crate::models::SolanaTransaction,
 	serde::{Deserialize, Serialize},
-	solana_sdk::{commitment_config::CommitmentConfig, transaction::Transaction},
+	solana_sdk::{
+		commitment_config::CommitmentConfig,
+		message::{Message, VersionedMessage},
+		transaction::Transaction,
+	},
 };
-
-use super::transaction::SolanaTransaction;
 
 /// Represents a Solana block with its metadata and transactions
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +30,7 @@ pub struct SolanaBlock {
 }
 
 /// Represents a reward in a Solana block
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SolanaReward {
 	/// The public key of the account that received the reward
 	pub pubkey: String,
@@ -101,5 +104,176 @@ impl SolanaBlock {
 	/// Returns the block's commitment level
 	pub fn commitment(&self) -> CommitmentConfig {
 		self.commitment
+	}
+}
+
+impl From<SolanaTransaction> for Transaction {
+	fn from(solana_tx: SolanaTransaction) -> Self {
+		Transaction {
+			message: match solana_tx.metadata.message {
+				VersionedMessage::Legacy(msg) => msg,
+				_ => Message::default(), // Handle v0 messages by defaulting to empty legacy message
+			},
+			signatures: vec![solana_tx.metadata.signature],
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::utils::tests::builders::solana::transaction::TransactionBuilder;
+	use solana_sdk::{
+		commitment_config::CommitmentConfig,
+		instruction::{AccountMeta, Instruction},
+		message::{Message, VersionedMessage},
+		pubkey::Pubkey,
+		signature::{Keypair, Signer},
+		transaction::Transaction,
+	};
+
+	fn create_test_transaction() -> Transaction {
+		let fee_payer = Keypair::new();
+		let program_id = Pubkey::new_unique();
+		let account1 = Pubkey::new_unique();
+		let account2 = Pubkey::new_unique();
+
+		let instruction = Instruction {
+			program_id,
+			accounts: vec![
+				AccountMeta::new(account1, false),
+				AccountMeta::new_readonly(account2, false),
+			],
+			data: vec![1, 2, 3],
+		};
+
+		let message = Message::new(&[instruction], Some(&fee_payer.pubkey()));
+		let signature = fee_payer.sign_message(&message.serialize());
+
+		TransactionBuilder::new()
+			.fee_payer(fee_payer.pubkey())
+			.message(VersionedMessage::Legacy(message))
+			.signature(signature)
+			.build()
+			.into()
+	}
+
+	fn create_test_reward() -> SolanaReward {
+		SolanaReward {
+			pubkey: "TestPubkey".to_string(),
+			lamports: 1000,
+			reward_type: "TestReward".to_string(),
+			commission: Some(5),
+		}
+	}
+
+	#[test]
+	fn test_solana_block_creation() {
+		let slot = 12345;
+		let blockhash = "test_blockhash".to_string();
+		let parent_slot = 12344;
+		let block_time = Some(1678901234);
+		let block_height = Some(12345);
+		let transactions = vec![create_test_transaction()];
+		let rewards = Some(vec![create_test_reward()]);
+		let commitment = CommitmentConfig::confirmed();
+
+		let block = SolanaBlock::new(
+			slot,
+			blockhash.clone(),
+			parent_slot,
+			block_time,
+			block_height,
+			transactions.clone(),
+			rewards.clone(),
+			commitment,
+		);
+
+		assert_eq!(block.slot(), slot);
+		assert_eq!(block.blockhash(), blockhash);
+		assert_eq!(block.parent_slot(), parent_slot);
+		assert_eq!(block.block_time(), block_time);
+		assert_eq!(block.block_height(), block_height);
+		assert_eq!(block.transactions(), transactions.as_slice());
+		assert_eq!(block.rewards(), rewards.as_deref());
+		assert_eq!(block.commitment(), commitment);
+	}
+
+	#[test]
+	fn test_solana_block_default_values() {
+		let block = SolanaBlock::new(
+			0,
+			"".to_string(),
+			0,
+			None,
+			None,
+			vec![],
+			None,
+			CommitmentConfig::default(),
+		);
+
+		assert_eq!(block.slot(), 0);
+		assert_eq!(block.blockhash(), "");
+		assert_eq!(block.parent_slot(), 0);
+		assert_eq!(block.block_time(), None);
+		assert_eq!(block.block_height(), None);
+		assert!(block.transactions().is_empty());
+		assert!(block.rewards().is_none());
+	}
+
+	#[test]
+	fn test_solana_reward_creation() {
+		let reward = create_test_reward();
+
+		assert_eq!(reward.pubkey, "TestPubkey");
+		assert_eq!(reward.lamports, 1000);
+		assert_eq!(reward.reward_type, "TestReward");
+		assert_eq!(reward.commission, Some(5));
+	}
+
+	#[test]
+	fn test_solana_block_with_multiple_transactions() {
+		let transactions = vec![
+			create_test_transaction(),
+			create_test_transaction(),
+			create_test_transaction(),
+		];
+
+		let block = SolanaBlock::new(
+			12345,
+			"test_blockhash".to_string(),
+			12344,
+			Some(1678901234),
+			Some(12345),
+			transactions.clone(),
+			None,
+			CommitmentConfig::confirmed(),
+		);
+
+		assert_eq!(block.transactions().len(), 3);
+		assert_eq!(block.transactions(), transactions.as_slice());
+	}
+
+	#[test]
+	fn test_solana_block_with_multiple_rewards() {
+		let rewards = Some(vec![
+			create_test_reward(),
+			create_test_reward(),
+			create_test_reward(),
+		]);
+
+		let block = SolanaBlock::new(
+			12345,
+			"test_blockhash".to_string(),
+			12344,
+			Some(1678901234),
+			Some(12345),
+			vec![],
+			rewards.clone(),
+			CommitmentConfig::confirmed(),
+		);
+
+		assert_eq!(block.rewards().unwrap().len(), 3);
+		assert_eq!(block.rewards(), rewards.as_deref());
 	}
 }
