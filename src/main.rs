@@ -376,7 +376,18 @@ async fn main() -> Result<()> {
 				}
 			}
 			BlockChainType::Midnight => unimplemented!("Midnight not implemented"),
-			BlockChainType::Solana => unimplemented!("Solana not implemented"),
+			BlockChainType::Solana => {
+				if let Ok(client) = client_pool.get_solana_client(&network).await {
+					let _ = block_watcher
+						.start_network_watcher(&network, (*client).clone())
+						.await
+						.inspect_err(|e| {
+							error!("Failed to start Solana network watcher: {}", e);
+						});
+				} else {
+					error!("Failed to get Solana client for network: {}", network.slug);
+				}
+			}
 		}
 	}
 

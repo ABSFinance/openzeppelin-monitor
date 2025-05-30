@@ -1692,7 +1692,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115e54d64eb62cdebad391c19efc9dce4981c690c85a33a12199d99bb9546fee"
 dependencies = [
  "borsh-derive 0.10.4",
- "hashbrown 0.12.3",
+ "hashbrown 0.13.2",
 ]
 
 [[package]]
@@ -1922,6 +1922,80 @@ checksum = "190baaad529bcfbde9e1a19022c42781bdb6ff9de25721abdb8fd98c0807730b"
 dependencies = [
  "libc",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "carbon-core"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b806a82c1adeee908fa41bdf3980b4100cd73ed1ec52564a6b55ade702660e5"
+dependencies = [
+ "async-trait",
+ "borsh 0.10.4",
+ "bs58",
+ "carbon-macros",
+ "carbon-proc-macros",
+ "futures",
+ "log",
+ "serde",
+ "serde_json",
+ "solana-account",
+ "solana-client",
+ "solana-instruction",
+ "solana-program",
+ "solana-pubkey",
+ "solana-sdk",
+ "solana-signature",
+ "solana-transaction-status",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "carbon-kamino-lending-decoder"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c432c03189868bef019d499f78c20366b297d995f9d3663a29a521059191dcf"
+dependencies = [
+ "carbon-core",
+ "serde",
+ "serde-big-array",
+ "solana-account",
+ "solana-instruction",
+ "solana-pubkey",
+]
+
+[[package]]
+name = "carbon-macros"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5a02ab2a7157549dfa2487e760e8c04d043ce21dcbd75d0a9d6c7c566079331"
+dependencies = [
+ "hex",
+ "paste",
+ "solana-client",
+ "solana-pubkey",
+ "solana-transaction-status",
+]
+
+[[package]]
+name = "carbon-proc-macros"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f298d86f92e896627ae7ab49d9938abca3bbdbd2abc3c4e34e6d9a2d78f9e230"
+dependencies = [
+ "borsh-derive-internal",
+ "hex",
+ "paste",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "solana-client",
+ "solana-pubkey",
+ "solana-transaction-status",
+ "syn 1.0.109",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -4818,6 +4892,8 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "byte-unit",
+ "carbon-core",
+ "carbon-kamino-lending-decoder",
  "cargo-llvm-cov",
  "chrono",
  "clap",

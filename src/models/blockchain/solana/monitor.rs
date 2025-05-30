@@ -4,10 +4,9 @@ use {
 			MatchConditions, Monitor, SolanaInstructionMetadata, SolanaTransaction,
 			SolanaTransactionMetadata,
 		},
-		services::decoders::solana::{
-			AccountDecoder, AccountType, InstructionDecoder, InstructionType,
-		},
+		services::decoders::{AccountType, InstructionType},
 	},
+	carbon_core::{account::AccountDecoder, instruction::InstructionDecoder},
 	serde::{Deserialize, Serialize},
 	solana_sdk::{
 		instruction::{AccountMeta, Instruction},
@@ -149,8 +148,8 @@ impl SolanaMonitorMatch {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum DecoderType {
-	Account(AccountType),
-	Instruction(InstructionType),
+	Account(AccountDecoder),
+	Instruction(InstructionDecoder),
 }
 
 impl Default for DecoderType {
