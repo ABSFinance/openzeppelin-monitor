@@ -10,6 +10,9 @@ mod evm {
 mod stellar {
 	pub mod http;
 }
+mod solana {
+	pub mod http;
+}
 
 mod endpoint_manager;
 mod http;

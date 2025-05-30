@@ -81,6 +81,10 @@ solana-transaction-status = "2.1.16"
 spl-memo = "5.0.0"
 spl-token = "6.0.0"
 
+# carbon
+carbon-core = "0.8.1"
+carbon-kamino-lending-decoder = "0.8.1"
+
 [dev-dependencies]
 cargo-llvm-cov = "0.6"
 mockall = "0.13.1"

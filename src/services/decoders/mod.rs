@@ -2,11 +2,7 @@
 //!
 //! This module provides traits and implementations for decoding Solana program
 //! instructions and account data.
-
 use crate::models::SolanaDecodedInstruction;
-use crate::services::decoders::kamino_lending_decoder::src::{
-	accounts::KaminoLendingAccount, instructions::KaminoLendingInstruction,
-};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
 	account_info::AccountInfo,
@@ -15,8 +11,11 @@ use solana_sdk::{
 };
 use std::fmt::Debug;
 
-/// Enum representing different types of Solana accounts that can be decoded
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+use carbon_kamino_lending_decoder::{
+	accounts::KaminoLendingAccount, instructions::KaminoLendingInstruction, KaminoLendingDecoder,
+	PROGRAM_ID as KAMINO_LENDING_PROGRAM_ID,
+};
+
 pub enum AccountType {
 	AssociatedTokenAccount,
 	KaminoLendingAccount(KaminoLendingAccount),
@@ -103,42 +102,21 @@ pub enum InstructionType {
 	Zeta,
 }
 
-#[derive(Debug, Clone)]
-pub struct DecodedAccount<T> {
-	pub lamports: u64,
-	pub data: T,
-	pub owner: Pubkey,
-	pub executable: bool,
-	pub rent_epoch: u64,
+pub fn decode_kamino_lending_account(account: &solana_account::Account) -> Option<AccountType> {
+	if account.owner != KAMINO_LENDING_PROGRAM_ID {
+		return None;
+	}
+
+	KaminoLendingDecoder::decode_account(account.data).map(AccountType::KaminoLendingAccount)
 }
 
-pub trait AccountDecoder<'a> {
-	type AccountType;
+pub fn decode_kamino_lending_instruction(
+	instruction: &solana_instruction::Instruction,
+) -> Option<InstructionType> {
+	if instruction.program_id != KAMINO_LENDING_PROGRAM_ID {
+		return None;
+	}
 
-	fn decode_account(
-		&self,
-		account: &'a solana_account::Account,
-	) -> Option<DecodedAccount<Self::AccountType>>;
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DecodedInstruction<T> {
-	pub program_id: Pubkey,
-	pub data: T,
-	pub accounts: Vec<AccountMeta>,
-}
-
-pub trait InstructionDecoder<'a> {
-	type InstructionType;
-
-	fn decode_instruction(
-		&self,
-		instruction: &'a solana_instruction::Instruction,
-	) -> Option<DecodedInstruction<Self::InstructionType>>;
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum DecoderError {
-	#[error("Invalid instruction data: {0}")]
-	InvalidData(String),
+	KaminoLendingDecoder::decode_instruction(instruction.data)
+		.map(InstructionType::KaminoLendingInstruction)
 }
