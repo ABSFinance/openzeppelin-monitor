@@ -13,9 +13,15 @@
 use crate::{
 	models::{BlockChainType, Network},
 	services::blockchain::{
-		BlockChainClient, BlockFilterFactory, EVMTransportClient, EvmClient, EvmClientTrait,
-		SolanaClient, SolanaClientTrait, SolanaTransportClient, StellarClient, StellarClientTrait,
+		BlockChainClient,
+		BlockFilterFactory,
+		EVMTransportClient,
+		EvmClient,
+		EvmClientTrait,
+		StellarClient,
+		StellarClientTrait,
 		StellarTransportClient,
+		//SolanaClient, SolanaClientTrait, SolanaTransportClient,
 	},
 };
 use anyhow::Context;
@@ -31,7 +37,7 @@ pub trait ClientPoolTrait: Send + Sync {
 	type StellarClient: StellarClientTrait
 		+ BlockChainClient
 		+ BlockFilterFactory<Self::StellarClient>;
-	type SolanaClient: SolanaClientTrait + BlockChainClient + BlockFilterFactory<Self::SolanaClient>;
+	// type SolanaClient: SolanaClientTrait + BlockChainClient + BlockFilterFactory<Self::SolanaClient>;
 
 	async fn get_evm_client(
 		&self,
@@ -41,10 +47,10 @@ pub trait ClientPoolTrait: Send + Sync {
 		&self,
 		network: &Network,
 	) -> Result<Arc<Self::StellarClient>, anyhow::Error>;
-	async fn get_solana_client(
-		&self,
-		network: &Network,
-	) -> Result<Arc<Self::SolanaClient>, anyhow::Error>;
+	// async fn get_solana_client(
+	// 	&self,
+	// 	network: &Network,
+	// ) -> Result<Arc<Self::SolanaClient>, anyhow::Error>;
 }
 
 /// Generic client storage that can hold any type of blockchain client
@@ -85,7 +91,7 @@ impl ClientPool {
 		// Register client types
 		pool.register_client_type::<EvmClient<EVMTransportClient>>(BlockChainType::EVM);
 		pool.register_client_type::<StellarClient<StellarTransportClient>>(BlockChainType::Stellar);
-		pool.register_client_type::<SolanaClient<SolanaTransportClient>>(BlockChainType::Solana);
+		// pool.register_client_type::<SolanaClient<SolanaTransportClient>>(BlockChainType::Solana);
 
 		pool
 	}
@@ -144,7 +150,7 @@ impl ClientPool {
 impl ClientPoolTrait for ClientPool {
 	type EvmClient = EvmClient<EVMTransportClient>;
 	type StellarClient = StellarClient<StellarTransportClient>;
-	type SolanaClient = SolanaClient<SolanaTransportClient>;
+	// type SolanaClient = SolanaClient<SolanaTransportClient>;
 
 	/// Gets or creates an EVM client for the given network.
 	///
@@ -178,21 +184,21 @@ impl ClientPoolTrait for ClientPool {
 		.with_context(|| "Failed to get or create Stellar client")
 	}
 
-	/// Gets or creates a Solana client for the given network.
-	///
-	/// First checks the cache for an existing client. If none exists,
-	/// creates a new client under a write lock.
-	async fn get_solana_client(
-		&self,
-		network: &Network,
-	) -> Result<Arc<Self::SolanaClient>, anyhow::Error> {
-		self.get_or_create_client(BlockChainType::Solana, network, |n| {
-			let network = n.clone();
-			Box::pin(async move { Self::SolanaClient::new(&network).await })
-		})
-		.await
-		.with_context(|| "Failed to get or create Solana client")
-	}
+	// /// Gets or creates a Solana client for the given network.
+	// ///
+	// /// First checks the cache for an existing client. If none exists,
+	// /// creates a new client under a write lock.
+	// async fn get_solana_client(
+	// 	&self,
+	// 	network: &Network,
+	// ) -> Result<Arc<Self::SolanaClient>, anyhow::Error> {
+	// 	self.get_or_create_client(BlockChainType::Solana, network, |n| {
+	// 		let network = n.clone();
+	// 		Box::pin(async move { Self::SolanaClient::new(&network).await })
+	// 	})
+	// 	.await
+	// 	.with_context(|| "Failed to get or create Solana client")
+	// }
 }
 
 impl Default for ClientPool {

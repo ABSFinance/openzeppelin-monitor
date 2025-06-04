@@ -11,10 +11,10 @@ mod stellar {
 	pub mod client;
 }
 
-mod solana {
-	pub mod client;
-	pub mod trait;
-}
+// mod solana {
+// 	pub mod client;
+// 	pub mod trait;
+// }
 
 pub use evm::client::{EvmClient, EvmClientTrait};
 pub use stellar::client::{StellarClient, StellarClientTrait};

@@ -148,13 +148,16 @@ impl SolanaMonitorMatch {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum DecoderType {
-	Account(AccountDecoder),
-	Instruction(InstructionDecoder),
+	// Account(AccountDecoder),
+	// Instruction(InstructionDecoder),
+	Account,
+	Instruction,
 }
 
 impl Default for DecoderType {
 	fn default() -> Self {
-		Self::Account(AccountType::SystemProgram)
+		// Self::Account(AccountType::SystemProgram)
+		Self::Account
 	}
 }
 
