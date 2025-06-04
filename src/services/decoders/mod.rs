@@ -2,7 +2,7 @@
 //!
 //! This module provides traits and implementations for decoding Solana program
 //! instructions and account data.
-use crate::models::SolanaDecodedInstruction;
+// use crate::models::SolanaDecodedInstruction;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
 	account_info::AccountInfo,
@@ -102,21 +102,21 @@ pub enum InstructionType {
 	Zeta,
 }
 
-pub fn decode_kamino_lending_account(account: &solana_account::Account) -> Option<AccountType> {
-	if account.owner != KAMINO_LENDING_PROGRAM_ID {
-		return None;
-	}
+// pub fn decode_kamino_lending_account(account: &solana_account::Account) -> Option<AccountType> {
+// 	if account.owner != KAMINO_LENDING_PROGRAM_ID {
+// 		return None;
+// 	}
 
-	KaminoLendingDecoder::decode_account(account.data).map(AccountType::KaminoLendingAccount)
-}
+// 	KaminoLendingDecoder::decode_account(account.data).map(AccountType::KaminoLendingAccount)
+// }
 
-pub fn decode_kamino_lending_instruction(
-	instruction: &solana_instruction::Instruction,
-) -> Option<InstructionType> {
-	if instruction.program_id != KAMINO_LENDING_PROGRAM_ID {
-		return None;
-	}
+// pub fn decode_kamino_lending_instruction(
+// 	instruction: &solana_instruction::Instruction,
+// ) -> Option<InstructionType> {
+// 	if instruction.program_id != KAMINO_LENDING_PROGRAM_ID {
+// 		return None;
+// 	}
 
-	KaminoLendingDecoder::decode_instruction(instruction.data)
-		.map(InstructionType::KaminoLendingInstruction)
-}
+// 	KaminoLendingDecoder::decode_instruction(instruction.data)
+// 		.map(InstructionType::KaminoLendingInstruction)
+// }

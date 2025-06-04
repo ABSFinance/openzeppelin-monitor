@@ -73,8 +73,8 @@ pub enum ContractSpec {
 	EVM(evm::EVMContractSpec),
 	/// Stellar contract spec
 	Stellar(stellar::StellarContractSpec),
-	/// Solana contract spec
-	Solana(solana::SolanaContractSpec),
+	// /// Solana contract spec
+	// Solana(solana::SolanaContractSpec),
 }
 
 /// Monitor match results from different blockchain platforms

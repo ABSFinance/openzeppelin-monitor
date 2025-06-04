@@ -56,7 +56,6 @@ pub async fn handle_match<T: TriggerExecutionServiceTrait>(
 ) -> Result<(), FilterError> {
 	match &matching_monitor {
 		MonitorMatch::Solana(solana_monitor_match) => todo!(),
-
 		MonitorMatch::EVM(evm_monitor_match) => {
 			let transaction = evm_monitor_match.transaction.clone();
 			// If sender does not exist, we replace with 0x0000000000000000000000000000000000000000

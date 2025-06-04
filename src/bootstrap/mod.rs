@@ -484,14 +484,14 @@ async fn run_trigger_filters(
 		let trigger_conditions = match monitor_match {
 			MonitorMatch::EVM(evm_match) => &evm_match.monitor.trigger_conditions,
 			MonitorMatch::Stellar(stellar_match) => &stellar_match.monitor.trigger_conditions,
-			MonitorMatch::Solana(solana_match) => todo!(),
+			MonitorMatch::Solana(solana_match) => &solana_match.monitor.trigger_conditions,
 		};
 
 		for trigger_condition in trigger_conditions {
 			let monitor_name = match monitor_match {
 				MonitorMatch::EVM(evm_match) => evm_match.monitor.name.clone(),
 				MonitorMatch::Stellar(stellar_match) => stellar_match.monitor.name.clone(),
-				MonitorMatch::Solana(solana_match) => todo!(),
+				MonitorMatch::Solana(solana_match) => solana_match.monitor.name.clone(),
 			};
 
 			let script_content = trigger_scripts

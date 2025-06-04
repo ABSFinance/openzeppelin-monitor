@@ -13,10 +13,10 @@ use crate::{
 	services::{
 		blockchain::{
 			client::{BlockChainClient, BlockFilterFactory},
-			transports::SolanaTransportClient,
+			// transports::SolanaTransportClient,s
 			BlockchainTransport,
 		},
-		filter::SolanaBlockFilter,
+		// filter::SolanaBlockFilter,
 	},
 };
 
@@ -52,22 +52,20 @@ impl SolanaClient<SolanaTransportClient> {
 
 #[async_trait]
 impl<T: Send + Sync + Clone> BlockChainClient for SolanaClient<T> {
-	async fn get_block(&self, block_number: u64) -> Result<BlockType, anyhow::Error> {
-		// TODO: Implement block retrieval
-		unimplemented!("Solana block retrieval not implemented")
+	async fn get_blocks(&self, start: u64, end: u64) -> Result<Vec<BlockType>, anyhow::Error> {
+		unimplemented!("Solana get_blocks not implemented")
 	}
 
-	async fn get_transaction(&self, tx_hash: &str) -> Result<SolanaTransaction, anyhow::Error> {
-		// TODO: Implement transaction retrieval
-		unimplemented!("Solana transaction retrieval not implemented")
+	async fn get_latest_block_number(&self) -> Result<u64, anyhow::Error> {
+		unimplemented!("Solana get_latest_block_number not implemented")
 	}
 }
 
-#[async_trait]
-impl<T: Send + Sync + Clone> BlockFilterFactory<SolanaClient<T>> for SolanaClient<T> {
-	type Filter = SolanaBlockFilter;
+// #[async_trait]
+// impl<T: Send + Sync + Clone> BlockFilterFactory<SolanaClient<T>> for SolanaClient<T> {
+// 	type Filter = SolanaBlockFilter;
 
-	fn create_filter(&self) -> Self::Filter {
-		SolanaBlockFilter::new()
-	}
-}
+// 	fn create_filter(&self) -> Self::Filter {
+// 		SolanaBlockFilter::new()
+// 	}
+// }
