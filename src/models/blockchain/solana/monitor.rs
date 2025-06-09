@@ -1,12 +1,9 @@
 use {
 	crate::{
-		models::{
-			MatchConditions, Monitor, SolanaInstructionMetadata, SolanaTransaction,
-			SolanaTransactionMetadata,
-		},
+		models::{MatchConditions, Monitor, SolanaInstructionMetadata, SolanaTransaction},
 		services::decoders::{AccountType, InstructionType},
 	},
-	carbon_core::{account::AccountDecoder, instruction::InstructionDecoder},
+	carbon_core::account::AccountDecoder,
 	serde::{Deserialize, Serialize},
 	solana_sdk::{
 		instruction::{AccountMeta, Instruction},
@@ -55,6 +52,9 @@ pub struct SolanaMatchParamsMap {
 pub struct SolanaMatchArguments {
 	/// Matched instructions
 	pub instructions: Option<Vec<SolanaMatchParamsMap>>,
+
+	/// Matched accounts arguments
+	pub accounts: Option<Vec<AccountMeta>>,
 }
 
 /// Represents a matched condition in a Solana transaction
@@ -147,17 +147,17 @@ impl SolanaMonitorMatch {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub enum DecoderType {
-	// Account(AccountDecoder),
-	// Instruction(InstructionDecoder),
-	Account,
-	Instruction,
+pub struct DecoderType {
+	pub account: Option<AccountType>,
+	pub instruction: Option<InstructionType>,
 }
 
-impl Default for DecoderType {
+impl<'a> Default for DecoderType {
 	fn default() -> Self {
-		// Self::Account(AccountType::SystemProgram)
-		Self::Account
+		Self {
+			account: None,
+			instruction: None,
+		}
 	}
 }
 
@@ -166,7 +166,7 @@ impl Default for DecoderType {
 /// This structure represents the parsed specification of a Solana program,
 /// containing information about account and instruction decoders that can be used
 /// to decode program data and instructions.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 pub struct ContractSpec(DecoderType);
 
 #[cfg(test)]
@@ -174,7 +174,7 @@ mod tests {
 	use crate::{
 		models::{
 			MatchConditions, SolanaDecodedInstruction, SolanaInstructionDecoder,
-			SolanaTransactionStatusMeta,
+			SolanaTransactionMetadata, SolanaTransactionStatusMeta,
 		},
 		utils::tests::solana::{
 			instruction::{InstructionBuilder, InstructionMetadataBuilder},

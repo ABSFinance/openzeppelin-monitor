@@ -1,28 +1,28 @@
-use std::marker::PhantomData;
+use {
+	crate::models::blockchain::solana::SolanaMatchArguments,
+	crate::models::{SolanaContractSpec, SolanaTransaction},
+	crate::{
+		models::{
+			blockchain::solana::{SolanaMatchParamEntry, SolanaMatchParamsMap},
+			BlockType, ContractSpec, FunctionCondition, MatchConditions, Monitor, MonitorMatch,
+			Network, TransactionCondition, TransactionStatus,
+		},
+		services::{
+			decoders::InstructionType,
+			filter::{error::FilterError, filters::BlockFilter},
+		},
+	},
+	hex,
+	solana_client::rpc_client::RpcClient,
+	solana_sdk::{
+		instruction::Instruction, message::Message, signature::Keypair, signer::Signer,
+		system_instruction, transaction::Transaction,
+	},
+	std::marker::PhantomData,
+};
 
 use async_trait::async_trait;
-use solana_client::rpc_client::RpcClient;
-use solana_sdk::{
-	account_info::AccountInfo,
-	message::Message,
-	pubkey::Pubkey,
-	signature::{Keypair, Signature},
-	system_instruction,
-	transaction::Transaction,
-};
 
-use crate::{
-	models::{
-		blockchain::solana::{SolanaMatchArguments, SolanaMatchParamEntry},
-		BlockType, ContractSpec, MatchConditions, Monitor, MonitorMatch, Network,
-		TransactionCondition, TransactionStatus,
-	},
-	services::filter::{error::FilterError, filters::BlockFilter},
-};
-
-use super::helpers::SolanaFilterHelpers;
-
-/// Solana-specific block filter implementation (EVM-style)
 pub struct SolanaBlockFilter<T> {
 	pub _client: PhantomData<T>,
 }
@@ -159,6 +159,119 @@ impl<T> SolanaBlockFilter<T> {
 			}
 		}
 	}
+
+	/// Finds function calls in a transaction that match the monitor's conditions.
+	///
+	/// Decodes the transaction instructions and matches against
+	/// the monitor's function conditions.
+	///
+	/// # Arguments
+	/// * `contract_specs` - List of contract specifications
+	/// * `transaction` - The transaction containing the function call
+	/// * `monitor` - Monitor containing function match conditions
+	/// * `matched_functions` - Vector to store matching functions
+	/// * `matched_on_args` - Arguments from matched function calls
+	pub fn find_matching_functions_for_transaction(
+		&self,
+		contract_specs: &[(String, SolanaContractSpec)],
+		transaction: &SolanaTransaction,
+		monitor: &Monitor,
+		matched_functions: &mut Vec<FunctionCondition>,
+		matched_on_args: &mut SolanaMatchArguments,
+	) {
+		if !monitor.match_conditions.functions.is_empty() {
+			// Process each instruction in the transaction
+			for instruction in &transaction.instructions {
+				// Find the matching monitored address for the instruction
+				if let Some(monitored_addr) = monitor
+					.addresses
+					.iter()
+					.find(|addr| instruction.program_id.to_string() == addr.address)
+				{
+					// Process the matching address's decoder
+					if let Some((_, decoder)) = contract_specs
+						.iter()
+						.find(|(address, _)| address == &monitored_addr.address)
+					{
+						// Check if we have a matching function condition
+						for function_condition in &monitor.match_conditions.functions {
+							if let Some(expr) = &function_condition.expression {
+								// Create parameter entries for the instruction
+								let mut params = vec![SolanaMatchParamEntry {
+									name: "program_id".to_string(),
+									value: instruction.program_id.to_string(),
+									kind: "pubkey".to_string(),
+									indexed: false,
+								}];
+
+								// Add account parameters with proper arrangement
+								if let Some(decoder) = decoder.instruction.as_ref() {
+									match decoder {
+										InstructionType::KaminoLendingInstruction(
+											kamino_instruction,
+										) => {
+											// Add arranged accounts based on instruction type
+											if let Some(arranged_accounts) = kamino_instruction
+												.arrange_accounts(&instruction.accounts)
+											{
+												for (name, account) in arranged_accounts.iter() {
+													params.push(SolanaMatchParamEntry {
+														name: name.to_string(),
+														value: account.to_string(),
+														kind: "pubkey".to_string(),
+														indexed: false,
+													});
+												}
+											}
+										}
+										_ => {
+											// Fallback to generic account handling
+											for (i, account) in
+												instruction.accounts.iter().enumerate()
+											{
+												params.push(SolanaMatchParamEntry {
+													name: format!("account_{}", i),
+													value: account.pubkey.to_string(),
+													kind: "pubkey".to_string(),
+													indexed: account.is_signer,
+												});
+											}
+										}
+									}
+								}
+
+								// Add data parameter if present
+								if !instruction.data.is_empty() {
+									params.push(SolanaMatchParamEntry {
+										name: "data".to_string(),
+										value: hex::encode(&instruction.data),
+										kind: "bytes".to_string(),
+										indexed: false,
+									});
+								}
+
+								// Evaluate the expression
+								if self.evaluate_expression(expr, &Some(params)) {
+									matched_functions.push(function_condition.clone());
+									matched_on_args.instructions =
+										Some(vec![SolanaMatchParamsMap {
+											signature: instruction.program_id.to_string(),
+											args: Some(params),
+											hex_signature: Some(hex::encode(&instruction.data)),
+										}]);
+									break;
+								}
+							} else {
+								// If no expression, match any function call to this program
+								matched_functions.push(function_condition.clone());
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 impl<T> Default for SolanaBlockFilter<T> {
@@ -188,12 +301,17 @@ impl<T: Send + Sync> BlockFilter for SolanaBlockFilter<T> {
 mod tests {
 	use super::*;
 	use crate::{
-		models::{AddressWithSpec, EventCondition, FunctionCondition},
+		models::{AddressWithSpec, EventCondition, FunctionCondition, MatchConditions},
 		utils::tests::builders::solana::monitor::MonitorBuilder,
 	};
-	use solana_sdk::{instruction::Instruction, system_program, sysvar::rent};
+	use solana_sdk::instruction::Instruction;
 
-	fn create_test_filter() -> SolanaBlockFilter {
+	use solana_sdk::{
+		message::Message, signature::Keypair, signer::Signer, system_instruction,
+		transaction::Transaction,
+	};
+
+	fn create_test_filter() -> SolanaBlockFilter<()> {
 		SolanaBlockFilter::new()
 	}
 
