@@ -27,7 +27,6 @@ use crate::{
 	services::{blockchain::BlockFilterFactory, filter::error::FilterError},
 };
 pub use evm::filter::EVMBlockFilter;
-pub use solana::filter::SolanaBlockFilter;
 pub use stellar::filter::StellarBlockFilter;
 
 /// Trait for filtering blockchain data

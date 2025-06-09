@@ -1,6 +1,6 @@
 use crate::models::{
-	AddressWithSpec, EventCondition, FunctionCondition, MatchConditions, Monitor,
-	TransactionCondition, TriggerConditions,
+	AddressWithSpec, ContractSpec, EventCondition, FunctionCondition, MatchConditions, Monitor,
+	SolanaContractSpec, TransactionCondition, TriggerConditions,
 };
 
 /// Builder for creating test monitors
@@ -41,6 +41,22 @@ impl MonitorBuilder {
 	/// Sets the networks
 	pub fn networks(mut self, networks: Vec<String>) -> Self {
 		self.networks = networks;
+		self
+	}
+
+	pub fn match_conditions(mut self, match_conditions: MatchConditions) -> Self {
+		self.match_conditions = match_conditions;
+		self
+	}
+
+	pub fn addresses_with_spec(mut self, addresses: Vec<(String, Option<ContractSpec>)>) -> Self {
+		self.addresses = addresses
+			.into_iter()
+			.map(|(addr, spec)| AddressWithSpec {
+				address: addr.to_string(),
+				contract_spec: spec,
+			})
+			.collect();
 		self
 	}
 

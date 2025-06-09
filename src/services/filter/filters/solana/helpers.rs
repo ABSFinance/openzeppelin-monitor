@@ -1,10 +1,4 @@
-use solana_client::rpc_client::RpcClient;
 use solana_sdk::transaction::Transaction;
-
-use crate::{
-	models::{BlockType, Monitor, MonitorMatch},
-	services::filter::error::FilterError,
-};
 
 /// Helper functions for Solana block filtering
 pub struct SolanaFilterHelpers;
