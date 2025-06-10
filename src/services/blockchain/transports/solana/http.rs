@@ -33,7 +33,7 @@ use crate::{
 /// - Configurable retry policies
 ///
 /// The client is thread-safe and can be shared across multiple tasks.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SolanaTransportClient {
 	/// RPC client for making requests
 	pub client: Arc<RpcClient>,

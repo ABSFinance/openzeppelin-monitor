@@ -11,7 +11,7 @@ mod trigger;
 
 pub use monitor::{
 	AddressWithSpec, EventCondition, FunctionCondition, MatchConditions, Monitor, ScriptLanguage,
-	TransactionCondition, TransactionStatus, TriggerConditions,
+	InstructionCondition, TransactionCondition, TransactionStatus, TriggerConditions,
 };
 pub use network::{Network, RpcUrl};
 pub use trigger::{NotificationMessage, Trigger, TriggerType, TriggerTypeConfig};

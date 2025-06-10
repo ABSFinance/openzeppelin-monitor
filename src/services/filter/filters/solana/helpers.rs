@@ -1,4 +1,21 @@
-use solana_sdk::transaction::Transaction;
+use {
+	crate::{
+		models::{SolanaInstructionMetadata, SolanaTransaction, SolanaTransactionMetadata},
+		services::{decoders::InstructionType, filter::error::FilterError},
+	},
+	agave_reserved_account_keys::ReservedAccountKeys,
+	carbon_core::{error::CarbonResult, instruction::DecodedInstruction},
+	carbon_kamino_lending_decoder::instructions::KaminoLendingInstruction,
+	solana_instruction::AccountMeta,
+	solana_pubkey::Pubkey,
+	solana_sdk::{
+		message::{
+			v0::{LoadedAddresses, LoadedMessage},
+			VersionedMessage,
+		},
+		transaction::Transaction,
+	},
+};
 
 /// Helper functions for Solana block filtering
 pub struct SolanaFilterHelpers;
@@ -6,6 +23,18 @@ pub struct SolanaFilterHelpers;
 impl SolanaFilterHelpers {
 	pub fn new() -> Self {
 		Self
+	}
+
+	/// Helper function to check if an instruction matches a specific type
+	pub fn matches_instruction_type<T: Into<InstructionType> + std::fmt::Debug + Clone>(
+		decoded_instruction: &DecodedInstruction<T>,
+		signature: &str,
+	) -> bool {
+		let instruction_type: InstructionType = decoded_instruction.data.clone().into();
+		match instruction_type {
+			InstructionType::KaminoLendingInstruction(ix) => format!("{:?}", ix) == signature,
+			_ => false,
+		}
 	}
 
 	/// Check if a transaction matches the given program ID
@@ -27,5 +56,214 @@ impl SolanaFilterHelpers {
 	/// Check if a transaction matches the given instruction data
 	pub fn matches_instruction_data(&self, tx: &Transaction, data: &[u8]) -> bool {
 		tx.message.instructions.iter().any(|ix| ix.data == data)
+	}
+
+	pub fn extract_instructions_with_metadata(
+		transaction_metadata: &SolanaTransactionMetadata,
+		transaction: &SolanaTransaction,
+	) -> CarbonResult<Vec<(SolanaInstructionMetadata, solana_instruction::Instruction)>> {
+		log::trace!(
+			"extract_instructions_with_metadata(transaction_metadata: {:?}, transaction_update: {:?})",
+			transaction_metadata,
+			transaction
+		);
+		let message = transaction.transaction.message.clone();
+		let meta = transaction.meta.clone();
+
+		let mut instructions_with_metadata =
+			Vec::<(SolanaInstructionMetadata, solana_instruction::Instruction)>::new();
+
+		match message {
+			VersionedMessage::Legacy(legacy) => {
+				for (i, compiled_instruction) in legacy.instructions.iter().enumerate() {
+					let program_id = *legacy
+						.account_keys
+						.get(compiled_instruction.program_id_index as usize)
+						.unwrap_or(&Pubkey::default());
+
+					let accounts = compiled_instruction
+						.accounts
+						.iter()
+						.filter_map(|account_index| {
+							let account_pubkey =
+								legacy.account_keys.get(*account_index as usize)?;
+							Some(AccountMeta {
+								pubkey: *account_pubkey,
+								is_writable: legacy
+									.is_maybe_writable(*account_index as usize, None),
+								is_signer: legacy.is_signer(*account_index as usize),
+							})
+						})
+						.collect::<Vec<_>>();
+
+					instructions_with_metadata.push((
+						SolanaInstructionMetadata {
+							transaction_metadata: transaction_metadata.clone(),
+							stack_height: 1,
+							index: i as u32,
+						},
+						solana_instruction::Instruction {
+							program_id,
+							accounts,
+							data: compiled_instruction.data.clone(),
+						},
+					));
+
+					if let Some(inner_instructions) = &meta.inner_instructions {
+						for inner_instructions_per_tx in inner_instructions {
+							if inner_instructions_per_tx.index == i as u8 {
+								for inner_instruction in
+									inner_instructions_per_tx.instructions.iter()
+								{
+									let program_id = *legacy
+										.account_keys
+										.get(
+											inner_instruction.instruction.program_id_index as usize,
+										)
+										.unwrap_or(&Pubkey::default());
+
+									let accounts: Vec<_> = inner_instruction
+										.instruction
+										.accounts
+										.iter()
+										.filter_map(|account_index| {
+											let account_pubkey =
+												legacy.account_keys.get(*account_index as usize)?;
+
+											Some(AccountMeta {
+												pubkey: *account_pubkey,
+												is_writable: legacy.is_maybe_writable(
+													*account_index as usize,
+													None,
+												),
+												is_signer: legacy
+													.is_signer(*account_index as usize),
+											})
+										})
+										.collect();
+
+									instructions_with_metadata.push((
+										SolanaInstructionMetadata {
+											transaction_metadata: transaction_metadata.clone(),
+											stack_height: inner_instruction
+												.stack_height
+												.unwrap_or(1),
+											index: inner_instructions_per_tx.index as u32,
+										},
+										solana_instruction::Instruction {
+											program_id,
+											accounts,
+											data: inner_instruction.instruction.data.clone(),
+										},
+									));
+								}
+							}
+						}
+					}
+				}
+			}
+			VersionedMessage::V0(v0) => {
+				let loaded_addresses = LoadedAddresses {
+					writable: meta.loaded_addresses.writable.to_vec(),
+					readonly: meta.loaded_addresses.readonly.to_vec(),
+				};
+
+				let loaded_message = LoadedMessage::new(
+					v0.clone(),
+					loaded_addresses,
+					&ReservedAccountKeys::empty_key_set(),
+				);
+
+				for (i, compiled_instruction) in v0.instructions.iter().enumerate() {
+					let program_id = *loaded_message
+						.account_keys()
+						.get(compiled_instruction.program_id_index as usize)
+						.unwrap_or(&Pubkey::default());
+
+					let accounts = compiled_instruction
+						.accounts
+						.iter()
+						.map(|account_index| {
+							let account_pubkey =
+								loaded_message.account_keys().get(*account_index as usize);
+
+							AccountMeta {
+								pubkey: account_pubkey.copied().unwrap_or_default(),
+								is_writable: loaded_message.is_writable(*account_index as usize),
+								is_signer: loaded_message.is_signer(*account_index as usize),
+							}
+						})
+						.collect::<Vec<_>>();
+
+					instructions_with_metadata.push((
+						SolanaInstructionMetadata {
+							transaction_metadata: transaction_metadata.clone(),
+							stack_height: 1,
+							index: i as u32,
+						},
+						solana_instruction::Instruction {
+							program_id,
+							accounts,
+							data: compiled_instruction.data.clone(),
+						},
+					));
+
+					if let Some(inner_instructions) = &meta.inner_instructions {
+						for inner_instructions_per_tx in inner_instructions {
+							if inner_instructions_per_tx.index == i as u8 {
+								for inner_instruction in
+									inner_instructions_per_tx.instructions.iter()
+								{
+									let program_id = *loaded_message
+										.account_keys()
+										.get(
+											inner_instruction.instruction.program_id_index as usize,
+										)
+										.unwrap_or(&Pubkey::default());
+
+									let accounts = inner_instruction
+										.instruction
+										.accounts
+										.iter()
+										.map(|account_index| {
+											let account_pubkey = loaded_message
+												.account_keys()
+												.get(*account_index as usize)
+												.copied()
+												.unwrap_or_default();
+
+											AccountMeta {
+												pubkey: account_pubkey,
+												is_writable: loaded_message
+													.is_writable(*account_index as usize),
+												is_signer: loaded_message
+													.is_signer(*account_index as usize),
+											}
+										})
+										.collect::<Vec<_>>();
+
+									instructions_with_metadata.push((
+										SolanaInstructionMetadata {
+											transaction_metadata: transaction_metadata.clone(),
+											stack_height: inner_instruction
+												.stack_height
+												.unwrap_or(1),
+											index: inner_instructions_per_tx.index as u32,
+										},
+										solana_instruction::Instruction {
+											program_id,
+											accounts,
+											data: inner_instruction.instruction.data.clone(),
+										},
+									));
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		Ok(instructions_with_metadata)
 	}
 }

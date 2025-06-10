@@ -5,7 +5,7 @@
 //! - Match handling and processing
 //! - Chain-specific helper functions
 
-mod error;
+pub(crate) mod error;
 mod filter_match;
 mod filters;
 
@@ -13,6 +13,7 @@ pub use error::FilterError;
 pub use filter_match::handle_match;
 
 pub use filters::{
-	evm::helpers as evm_helpers, stellar::helpers as stellar_helpers, BlockFilter, EVMBlockFilter,
-	FilterService, StellarBlockFilter,
+	evm::helpers as evm_helpers, solana::helpers as solana_helpers,
+	stellar::helpers as stellar_helpers, BlockFilter, EVMBlockFilter, FilterService,
+	SolanaBlockFilter, StellarBlockFilter,
 };
