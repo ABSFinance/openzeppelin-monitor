@@ -2,9 +2,12 @@ use solana_sdk::{
 	instruction::{AccountMeta, Instruction},
 	pubkey::Pubkey,
 	signature::Signature,
+	transaction::Result as TransactionResult,
 };
 
-use crate::models::SolanaInstructionMetadata;
+use crate::models::{
+	SolanaInstructionMetadata, SolanaTransactionMetadata, SolanaTransactionStatusMeta,
+};
 
 /// Builder for creating test instructions
 pub struct InstructionBuilder {
@@ -137,15 +140,29 @@ impl InstructionMetadataBuilder {
 	/// Builds the instruction metadata
 	pub fn build(self) -> SolanaInstructionMetadata {
 		SolanaInstructionMetadata {
-			slot: self.slot,
-			signature: self.signature,
-			fee_payer: self.fee_payer,
-			block_time: self.block_time,
-			block_height: self.block_height,
-			blockhash: self.blockhash,
-			parent_slot: self.parent_slot,
-			stack_height: self.stack_height,
-			instruction_index: self.instruction_index,
+			transaction_metadata: SolanaTransactionMetadata {
+				slot: self.slot,
+				signature: self.signature,
+				fee_payer: self.fee_payer,
+				meta: SolanaTransactionStatusMeta {
+					status: TransactionResult::Ok(()),
+					fee: 0,
+					pre_balances: vec![],
+					post_balances: vec![],
+					inner_instructions: None,
+					log_messages: None,
+					pre_token_balances: None,
+					post_token_balances: None,
+					rewards: None,
+					loaded_addresses: todo!(),
+					return_data: todo!(),
+					compute_units_consumed: todo!(),
+				},
+				message: todo!(),
+				block_time: self.block_time,
+			},
+			stack_height: self.stack_height as u32,
+			index: self.instruction_index as u32,
 		}
 	}
 }

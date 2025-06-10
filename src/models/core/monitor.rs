@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::blockchain::ContractSpec;
+use crate::{
+	models::blockchain::{solana::DecoderType, ContractSpec},
+	services::decoders::InstructionType,
+};
 
 /// Configuration for monitoring specific blockchain activity.
 ///
@@ -69,6 +72,11 @@ pub struct FunctionCondition {
 	pub signature: String,
 
 	/// Optional expression to filter function parameters
+	pub expression: Option<String>,
+}
+
+pub struct InstructionCondition {
+	pub instruction_type: InstructionType,
 	pub expression: Option<String>,
 }
 

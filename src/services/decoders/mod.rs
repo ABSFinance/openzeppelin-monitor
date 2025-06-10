@@ -2,14 +2,19 @@
 //!
 //! This module provides traits and implementations for decoding Solana program
 //! instructions and account data.
-// use crate::models::SolanaDecodedInstruction;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
 
-use carbon_kamino_lending_decoder::{
-	accounts::KaminoLendingAccount, instructions::KaminoLendingInstruction,
+use {
+	carbon_core::instruction::{DecodedInstruction, InstructionDecoder},
+	carbon_kamino_lending_decoder::{
+		accounts::KaminoLendingAccount, instructions::KaminoLendingInstruction,
+		KaminoLendingDecoder,
+	},
+	serde::{Deserialize, Deserializer, Serialize, Serializer},
+	solana_sdk::pubkey::Pubkey,
+	std::fmt,
 };
 
+/// Wrapper for KaminoLendingAccount to handle serialization
 #[derive(Clone)]
 pub struct KaminoLendingAccountWrapper<'a>(&'a KaminoLendingAccount);
 
@@ -32,7 +37,6 @@ impl Serialize for KaminoLendingAccountWrapper<'_> {
 	where
 		S: Serializer,
 	{
-		// Serialize as a string representation or some other format
 		serializer.serialize_str("KaminoLendingAccount")
 	}
 }
@@ -42,7 +46,6 @@ impl<'de> Deserialize<'de> for KaminoLendingAccountWrapper<'_> {
 	where
 		D: Deserializer<'de>,
 	{
-		// Since we can't deserialize the actual data, we'll return an error
 		Err(serde::de::Error::custom(
 			"Cannot deserialize KaminoLendingAccount",
 		))
@@ -51,13 +54,13 @@ impl<'de> Deserialize<'de> for KaminoLendingAccountWrapper<'_> {
 
 impl<'a> PartialEq for KaminoLendingAccountWrapper<'a> {
 	fn eq(&self, _other: &Self) -> bool {
-		// Since we can't compare the inner types, we'll consider them equal if they point to the same memory
 		std::ptr::eq(self.0, _other.0)
 	}
 }
 
 impl<'a> Eq for KaminoLendingAccountWrapper<'a> {}
 
+/// Supported account types that can be decoded
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AccountType {
 	AssociatedTokenAccount,
@@ -101,9 +104,11 @@ pub enum AccountType {
 	Zeta,
 }
 
-/// Enum representing different types of Solana instructions that can be decoded
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Supported instruction types that can be decoded
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum InstructionType {
+	#[default]
+	Unknown,
 	AssociatedTokenAccount,
 	KaminoLendingInstruction(KaminoLendingInstruction),
 	KaminoFarms,
@@ -143,4 +148,93 @@ pub enum InstructionType {
 	SystemProgram,
 	Virtuals,
 	Zeta,
+}
+
+impl From<KaminoLendingInstruction> for InstructionType {
+	fn from(instruction: KaminoLendingInstruction) -> Self {
+		InstructionType::KaminoLendingInstruction(instruction)
+	}
+}
+
+/// A decoder that can handle different instruction types
+pub struct Decoder {
+	kamino_decoder: KaminoLendingDecoder,
+	// Add other decoders here as needed
+}
+
+impl Decoder {
+	pub fn new() -> Self {
+		Self {
+			kamino_decoder: KaminoLendingDecoder,
+			// Initialize other decoders
+		}
+	}
+}
+
+impl<'a> InstructionDecoder<'a> for Decoder {
+	type InstructionType = InstructionType;
+
+	fn decode_instruction(
+		&self,
+		instruction: &'a solana_instruction::Instruction,
+	) -> Option<DecodedInstruction<Self::InstructionType>> {
+		// Try Kamino decoder
+		if let Some(decoded) = self.kamino_decoder.decode_instruction(instruction) {
+			return Some(DecodedInstruction {
+				program_id: decoded.program_id,
+				data: InstructionType::KaminoLendingInstruction(decoded.data),
+				accounts: decoded.accounts,
+			});
+		}
+
+		None
+	}
+}
+
+/// Helper function to create match parameters for an instruction
+pub fn create_match_params(
+	program_id: &Pubkey,
+	instruction: &InstructionType,
+) -> Vec<crate::models::blockchain::solana::SolanaMatchParamEntry> {
+	let mut params = vec![crate::models::blockchain::solana::SolanaMatchParamEntry {
+		name: "program_id".to_string(),
+		value: program_id.to_string(),
+		kind: "pubkey".to_string(),
+		indexed: false,
+	}];
+
+	// Add instruction-specific parameters
+	match instruction {
+		InstructionType::KaminoLendingInstruction(ix) => {
+			match ix {
+				KaminoLendingInstruction::InitLendingMarket(data) => {
+					// Add InitLendingMarket specific parameters
+				}
+				KaminoLendingInstruction::UpdateLendingMarket(data) => {
+					// Add UpdateLendingMarket specific parameters
+				}
+				_ => {}
+			}
+		}
+		// Add other instruction type parameters
+		_ => {}
+	}
+
+	params
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use solana_sdk::instruction::Instruction;
+
+	#[test]
+	fn test_matches_instruction_type() {
+		// Add tests for instruction type matching
+	}
+
+	#[test]
+	fn test_create_match_params() {
+		// Add tests for parameter creation
+	}
 }

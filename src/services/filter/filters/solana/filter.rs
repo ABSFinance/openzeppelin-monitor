@@ -1,36 +1,54 @@
+use crate::{
+	models::FunctionCondition,
+	services::{
+		decoders::{Decoder, InstructionType},
+		filter::{
+			error::FilterError,
+			filters::{solana::helpers::SolanaFilterHelpers, BlockFilter},
+		},
+	},
+};
+
 use {
-	crate::models::blockchain::solana::SolanaMatchArguments,
-	crate::models::{SolanaContractSpec, SolanaTransaction},
-	crate::{
-		models::{
-			blockchain::solana::{SolanaMatchParamEntry, SolanaMatchParamsMap},
-			BlockType, ContractSpec, FunctionCondition, MatchConditions, Monitor, MonitorMatch,
-			Network, TransactionCondition, TransactionStatus,
+	crate::models::{
+		blockchain::solana::{
+			NestedInstructions, SolanaInstructionsWithMetadata, SolanaMatchArguments,
+			SolanaMatchParamEntry, SolanaTransaction, SolanaTransactionMetadata,
 		},
-		services::{
-			decoders::InstructionType,
-			filter::{error::FilterError, filters::BlockFilter},
-		},
+		BlockType, ContractSpec, InstructionCondition, Monitor, MonitorMatch, Network,
+		SolanaContractSpec, TransactionCondition, TransactionStatus,
 	},
-	hex,
-	solana_client::rpc_client::RpcClient,
-	solana_sdk::{
-		instruction::Instruction, message::Message, signature::Keypair, signer::Signer,
-		system_instruction, transaction::Transaction,
-	},
+	solana_sdk::transaction::Transaction,
 	std::marker::PhantomData,
 };
 
 use async_trait::async_trait;
 
+// Add Carbon's instruction types
+use carbon_core::instruction::{DecodedInstruction, InstructionDecoder};
+use carbon_kamino_lending_decoder::instructions::KaminoLendingInstruction;
+
 pub struct SolanaBlockFilter<T> {
 	pub _client: PhantomData<T>,
+	pub helpers: SolanaFilterHelpers,
 }
 
 impl<T> SolanaBlockFilter<T> {
 	pub fn new() -> Self {
 		Self {
 			_client: PhantomData,
+			helpers: SolanaFilterHelpers::new(),
+		}
+	}
+
+	pub fn set_decoder<D: Send + Sync + 'static>(
+		&mut self,
+		instruction_type: InstructionType,
+	) -> Box<dyn for<'a> InstructionDecoder<'a, InstructionType = D> + Send + Sync + 'static> {
+		match instruction_type {
+			_ => {
+				Box::new(KaminoLendingDecoder::new());
+			}
 		}
 	}
 
@@ -160,17 +178,6 @@ impl<T> SolanaBlockFilter<T> {
 		}
 	}
 
-	/// Finds function calls in a transaction that match the monitor's conditions.
-	///
-	/// Decodes the transaction instructions and matches against
-	/// the monitor's function conditions.
-	///
-	/// # Arguments
-	/// * `contract_specs` - List of contract specifications
-	/// * `transaction` - The transaction containing the function call
-	/// * `monitor` - Monitor containing function match conditions
-	/// * `matched_functions` - Vector to store matching functions
-	/// * `matched_on_args` - Arguments from matched function calls
 	pub fn find_matching_functions_for_transaction(
 		&self,
 		contract_specs: &[(String, SolanaContractSpec)],
@@ -180,91 +187,62 @@ impl<T> SolanaBlockFilter<T> {
 		matched_on_args: &mut SolanaMatchArguments,
 	) {
 		if !monitor.match_conditions.functions.is_empty() {
-			// Process each instruction in the transaction
-			for instruction in &transaction.instructions {
-				// Find the matching monitored address for the instruction
-				if let Some(monitored_addr) = monitor
-					.addresses
-					.iter()
-					.find(|addr| instruction.program_id.to_string() == addr.address)
-				{
-					// Process the matching address's decoder
-					if let Some((_, decoder)) = contract_specs
-						.iter()
-						.find(|(address, _)| address == &monitored_addr.address)
+			let transaction_metadata: &SolanaTransactionMetadata =
+				&(*transaction).clone().try_into().unwrap();
+
+			let instructions_with_metadata: SolanaInstructionsWithMetadata =
+				SolanaFilterHelpers::extract_instructions_with_metadata(
+					transaction_metadata,
+					&transaction,
+				)
+				.unwrap();
+
+			let nested_instructions: NestedInstructions = instructions_with_metadata.into();
+
+			for nested_instruction in nested_instructions.iter() {
+				// Find matching contract spec and decoder
+				if let Some((_, instruction_type)) = contract_specs.iter().find(|(address, _)| {
+					address == &nested_instruction.instruction.program_id.to_string()
+				}) {
+					let decoder = self.set_decoder(instruction_type);
+
+					if let Some(decoded_instruction) =
+						decoder.decode_instruction(&nested_instruction.instruction)
 					{
-						// Check if we have a matching function condition
-						for function_condition in &monitor.match_conditions.functions {
-							if let Some(expr) = &function_condition.expression {
-								// Create parameter entries for the instruction
-								let mut params = vec![SolanaMatchParamEntry {
-									name: "program_id".to_string(),
-									value: instruction.program_id.to_string(),
-									kind: "pubkey".to_string(),
-									indexed: false,
-								}];
+						for condition in &monitor.match_conditions.functions {
+							// Match the instruction type based on the signature
+							let matches = SolanaFilterHelpers::matches_instruction_type(
+								&decoded_instruction,
+								&condition.signature,
+							);
 
-								// Add account parameters with proper arrangement
-								if let Some(decoder) = decoder.instruction.as_ref() {
-									match decoder {
-										InstructionType::KaminoLendingInstruction(
-											kamino_instruction,
-										) => {
-											// Add arranged accounts based on instruction type
-											if let Some(arranged_accounts) = kamino_instruction
-												.arrange_accounts(&instruction.accounts)
-											{
-												for (name, account) in arranged_accounts.iter() {
-													params.push(SolanaMatchParamEntry {
-														name: name.to_string(),
-														value: account.to_string(),
-														kind: "pubkey".to_string(),
-														indexed: false,
-													});
-												}
-											}
-										}
-										_ => {
-											// Fallback to generic account handling
-											for (i, account) in
-												instruction.accounts.iter().enumerate()
-											{
-												params.push(SolanaMatchParamEntry {
-													name: format!("account_{}", i),
-													value: account.pubkey.to_string(),
-													kind: "pubkey".to_string(),
-													indexed: account.is_signer,
-												});
-											}
-										}
+							if matches {
+								if let Some(expr) = &condition.expression {
+									// Create match parameters for the instruction
+									let tx_params = vec![
+										SolanaMatchParamEntry {
+											name: "program_id".to_string(),
+											value: decoded_instruction.program_id.to_string(),
+											kind: "pubkey".to_string(),
+											indexed: false,
+										},
+										// Add more parameters based on the instruction type
+									];
+
+									if self.evaluate_expression(expr, &Some(tx_params)) {
+										matched_functions.push(FunctionCondition {
+											signature: condition.signature.clone(),
+											expression: Some(expr.to_string()),
+										});
+										break;
 									}
-								}
-
-								// Add data parameter if present
-								if !instruction.data.is_empty() {
-									params.push(SolanaMatchParamEntry {
-										name: "data".to_string(),
-										value: hex::encode(&instruction.data),
-										kind: "bytes".to_string(),
-										indexed: false,
+								} else {
+									matched_functions.push(FunctionCondition {
+										signature: condition.signature.clone(),
+										expression: None,
 									});
-								}
-
-								// Evaluate the expression
-								if self.evaluate_expression(expr, &Some(params)) {
-									matched_functions.push(function_condition.clone());
-									matched_on_args.instructions =
-										Some(vec![SolanaMatchParamsMap {
-											signature: instruction.program_id.to_string(),
-											args: Some(params),
-											hex_signature: Some(hex::encode(&instruction.data)),
-										}]);
 									break;
 								}
-							} else {
-								// If no expression, match any function call to this program
-								matched_functions.push(function_condition.clone());
-								break;
 							}
 						}
 					}
@@ -282,7 +260,7 @@ impl<T> Default for SolanaBlockFilter<T> {
 
 #[async_trait]
 impl<T: Send + Sync> BlockFilter for SolanaBlockFilter<T> {
-	type Client = RpcClient;
+	type Client = T;
 
 	async fn filter_block(
 		&self,
@@ -294,6 +272,27 @@ impl<T: Send + Sync> BlockFilter for SolanaBlockFilter<T> {
 	) -> Result<Vec<MonitorMatch>, FilterError> {
 		// TODO: Implement Solana-specific block filtering logic
 		Ok(Vec::new())
+	}
+}
+// KaminoLendingDecoder implementation
+struct KaminoLendingDecoder;
+
+impl KaminoLendingDecoder {
+	fn new() -> Self {
+		Self
+	}
+}
+
+impl<'a> InstructionDecoder<'a> for KaminoLendingDecoder {
+	type InstructionType = KaminoLendingInstruction;
+
+	fn decode_instruction(
+		&self,
+		instruction: &'a solana_instruction::Instruction,
+	) -> Option<DecodedInstruction<Self::InstructionType>> {
+		// Use the actual KaminoLendingDecoder from carbon_kamino_lending_decoder
+		// This is a placeholder - you'll need to implement the actual decoding logic
+		None
 	}
 }
 

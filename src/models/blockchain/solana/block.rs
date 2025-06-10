@@ -110,11 +110,11 @@ impl SolanaBlock {
 impl From<SolanaTransaction> for Transaction {
 	fn from(solana_tx: SolanaTransaction) -> Self {
 		Transaction {
-			message: match solana_tx.metadata.message {
-				VersionedMessage::Legacy(msg) => msg,
-				_ => Message::default(), // Handle v0 messages by defaulting to empty legacy message
+			message: match &solana_tx.transaction.message {
+				VersionedMessage::Legacy(msg) => msg.clone(),
+				_ => Message::default(),
 			},
-			signatures: vec![solana_tx.metadata.signature],
+			signatures: vec![solana_tx.signature],
 		}
 	}
 }

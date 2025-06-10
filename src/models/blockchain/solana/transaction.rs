@@ -1,19 +1,17 @@
 use {
 	crate::models::blockchain::solana::block::SolanaBlock,
+	crate::services::filter::error::FilterError,
 	serde::{Deserialize, Serialize},
 	solana_account_decoder::parse_token::UiTokenAmount,
 	solana_sdk::{
-		instruction::AccountMeta,
 		message::{v0::LoadedAddresses, Message, VersionedMessage},
 		pubkey::Pubkey,
 		signature::Signature,
-		transaction::Result as TransactionResult,
+		transaction::{Result as TransactionResult, VersionedTransaction},
 		transaction_context::TransactionReturnData,
 	},
 	solana_transaction_status::{InnerInstructions, Rewards},
 };
-
-use super::instruction::DecodedInstruction;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TransactionTokenBalance {
@@ -105,84 +103,73 @@ impl Default for TransactionMetadata {
 /// Represents a Solana transaction with its metadata and instructions
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SolanaTransaction {
-	/// Metadata about the transaction
-	pub metadata: TransactionMetadata,
-	/// The decoded instructions in the transaction
-	pub instructions: Vec<DecodedInstruction<Vec<u8>>>,
+	/// The unique signature of this transaction
+	pub signature: Signature,
+	/// The versioned transaction containing the message and signatures
+	pub transaction: VersionedTransaction,
+	/// Transaction status metadata containing execution status, fees, balances, etc.
+	pub meta: TransactionStatusMeta,
+	/// The slot number in which this transaction was processed
+	pub slot: u64,
+	/// The Unix timestamp of when the transaction was processed
+	pub block_time: Option<i64>,
 }
 
 impl SolanaTransaction {
 	/// Creates a new SolanaTransaction from a block and transaction index
 	pub fn new(block: &SolanaBlock, tx_index: usize) -> Option<Self> {
-		block.transactions.get(tx_index).map(|tx| {
-			let metadata = TransactionMetadata {
-				slot: block.slot,
-				signature: tx.signatures[0],
-				fee_payer: tx.message.account_keys[0],
-				meta: TransactionStatusMeta::default(),
-				message: VersionedMessage::Legacy(tx.message.clone()),
-				block_time: block.block_time,
-			};
-
-			let instructions = tx
-				.message
-				.instructions
-				.iter()
-				.map(|ix| DecodedInstruction {
-					program_id: *ix.program_id(&tx.message.account_keys),
-					data: ix.data.clone(),
-					accounts: ix
-						.accounts
-						.iter()
-						.map(|&idx| AccountMeta {
-							pubkey: tx.message.account_keys[idx as usize],
-							is_signer: tx.message.is_signer(idx as usize),
-							is_writable: tx.message.is_maybe_writable(idx as usize, None),
-						})
-						.collect(),
-				})
-				.collect();
-
-			Self {
-				metadata,
-				instructions,
-			}
+		block.transactions.get(tx_index).map(|tx| Self {
+			signature: tx.signatures[0],
+			transaction: tx.clone().into(),
+			meta: TransactionStatusMeta::default(),
+			slot: block.slot,
+			block_time: block.block_time,
 		})
 	}
 
 	/// Returns the transaction signature
 	pub fn signature(&self) -> &Signature {
-		&self.metadata.signature
+		&self.signature
 	}
 
 	/// Returns the transaction slot
 	pub fn slot(&self) -> u64 {
-		self.metadata.slot
-	}
-
-	/// Returns the fee payer's public key
-	pub fn fee_payer(&self) -> &Pubkey {
-		&self.metadata.fee_payer
+		self.slot
 	}
 
 	/// Returns the transaction status metadata
 	pub fn meta(&self) -> &TransactionStatusMeta {
-		&self.metadata.meta
+		&self.meta
 	}
 
 	/// Returns the transaction message
 	pub fn message(&self) -> &VersionedMessage {
-		&self.metadata.message
+		&self.transaction.message
 	}
 
 	/// Returns the block time if available
 	pub fn block_time(&self) -> Option<i64> {
-		self.metadata.block_time
+		self.block_time
 	}
+}
 
-	/// Returns a reference to the decoded instructions
-	pub fn instructions(&self) -> &[DecodedInstruction<Vec<u8>>] {
-		&self.instructions
+impl TryFrom<SolanaTransaction> for TransactionMetadata {
+	type Error = FilterError;
+
+	fn try_from(value: SolanaTransaction) -> Result<Self, Self::Error> {
+		log::trace!("try_from(transaction_update: {:?})", value);
+		let accounts = value.transaction.message.static_account_keys();
+
+		Ok(TransactionMetadata {
+			slot: value.slot,
+			signature: value.signature,
+			fee_payer: *accounts.first().ok_or_else(|| {
+				FilterError::solana_error("Missing fee payer account", None, None)
+			})?,
+			meta: value.meta.clone(),
+			message: value.transaction.message.clone(),
+			block_time: value.block_time,
+		})
 	}
 }
 
@@ -221,17 +208,8 @@ mod tests {
 		TransactionBuilder::new()
 			.slot(12345)
 			.signature(signature)
-			.fee_payer(fee_payer.pubkey())
 			.message(VersionedMessage::Legacy(message))
 			.block_time(1678901234)
-			.instruction(DecodedInstruction {
-				program_id,
-				data: vec![1, 2, 3, 4],
-				accounts: vec![
-					AccountMeta::new(account1, true),
-					AccountMeta::new(account2, false),
-				],
-			})
 			.build()
 	}
 
@@ -239,49 +217,35 @@ mod tests {
 	fn test_signature() {
 		let tx = create_test_transaction();
 		let signature = tx.signature();
-		assert_eq!(signature, &tx.metadata.signature);
+		assert_eq!(signature, &tx.signature);
 	}
 
 	#[test]
 	fn test_slot() {
 		let tx = create_test_transaction();
 		let slot = tx.slot();
-		assert_eq!(slot, tx.metadata.slot);
-	}
-
-	#[test]
-	fn test_fee_payer() {
-		let tx = create_test_transaction();
-		let fee_payer = tx.fee_payer();
-		assert_eq!(fee_payer, &tx.metadata.fee_payer);
+		assert_eq!(slot, tx.slot);
 	}
 
 	#[test]
 	fn test_meta() {
 		let tx = create_test_transaction();
 		let meta = tx.meta();
-		assert_eq!(meta, &tx.metadata.meta);
+		assert_eq!(meta, &tx.meta);
 	}
 
 	#[test]
 	fn test_message() {
 		let tx = create_test_transaction();
 		let message = tx.message();
-		assert_eq!(message, &tx.metadata.message);
+		assert_eq!(message, &tx.transaction.message);
 	}
 
 	#[test]
 	fn test_block_time() {
 		let tx = create_test_transaction();
 		let block_time = tx.block_time();
-		assert_eq!(block_time, tx.metadata.block_time);
-	}
-
-	#[test]
-	fn test_instructions() {
-		let tx = create_test_transaction();
-		let instructions = tx.instructions();
-		assert_eq!(instructions, &tx.instructions);
+		assert_eq!(block_time, tx.block_time);
 	}
 
 	#[test]
@@ -291,26 +255,17 @@ mod tests {
 			blockhash: Signature::new_unique().to_string(),
 			parent_slot: 12344,
 			transactions: vec![solana_sdk::transaction::Transaction {
+				message: Message::default(),
 				signatures: vec![Signature::new_unique()],
-				message: Message::new(
-					&[Instruction {
-						program_id: Pubkey::new_unique(),
-						accounts: vec![AccountMeta::new(Pubkey::new_unique(), true)],
-						data: vec![1, 2, 3, 4],
-					}],
-					Some(&Pubkey::new_unique()),
-				),
 			}],
 			block_time: Some(1678901234),
 			block_height: Some(12345),
 			rewards: None,
-			commitment: CommitmentConfig::confirmed(),
+			commitment: CommitmentConfig::default(),
 		};
 
 		let tx = SolanaTransaction::new(&block, 0).unwrap();
-		assert_eq!(tx.slot(), block.slot);
-		assert_eq!(tx.block_time(), block.block_time);
-		assert_eq!(tx.instructions().len(), 1);
-		assert_eq!(tx.instructions()[0].data, vec![1, 2, 3, 4]);
+		assert_eq!(tx.slot, block.slot);
+		assert_eq!(tx.block_time, block.block_time);
 	}
 }

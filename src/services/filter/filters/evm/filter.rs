@@ -937,7 +937,7 @@ mod tests {
 	}
 
 	fn create_test_abi(abi_type: &str) -> ContractSpec {
-		let spec = match abi_type {
+		let spec: serde_json::Value = match abi_type {
 			"function" => json!([{
 				"type": "function",
 				"name": "transfer",

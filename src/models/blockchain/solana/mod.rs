@@ -5,7 +5,7 @@ mod transaction;
 
 pub use block::{SolanaBlock, SolanaReward};
 pub use monitor::{
-	ContractSpec as SolanaContractSpec, SolanaMatchArguments, SolanaMatchParamEntry,
+	ContractSpec as SolanaContractSpec, DecoderType, SolanaMatchArguments, SolanaMatchParamEntry,
 	SolanaMatchParamsMap, SolanaMonitorMatch,
 };
 pub use transaction::{
@@ -16,4 +16,5 @@ pub use transaction::{
 pub use instruction::{
 	DecodedInstruction as SolanaDecodedInstruction, InstructionDecoder as SolanaInstructionDecoder,
 	InstructionMetadata as SolanaInstructionMetadata,
+	InstructionsWithMetadata as SolanaInstructionsWithMetadata, NestedInstructions,
 };

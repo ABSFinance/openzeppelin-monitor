@@ -3,10 +3,10 @@ use {
 		models::{MatchConditions, Monitor, SolanaInstructionMetadata, SolanaTransaction},
 		services::decoders::{AccountType, InstructionType},
 	},
-	carbon_core::account::AccountDecoder,
 	serde::{Deserialize, Serialize},
 	solana_sdk::{
 		instruction::{AccountMeta, Instruction},
+		message::VersionedMessage,
 		pubkey::Pubkey,
 		signature::Signature,
 	},
@@ -102,17 +102,46 @@ impl SolanaMonitorMatch {
 
 	/// Returns the program ID
 	pub fn program_id(&self) -> &Pubkey {
-		&self.transaction.instructions()[0].program_id
+		match self.transaction.message() {
+			VersionedMessage::Legacy(msg) => &msg.account_keys[0],
+			VersionedMessage::V0(msg) => &msg.account_keys[0],
+		}
 	}
 
-	/// Returns the accounts involved
-	pub fn accounts(&self) -> &[AccountMeta] {
-		&self.transaction.instructions()[0].accounts
-	}
+	// /// Returns the accounts involved
+	// pub fn accounts(&self) -> Vec<AccountMeta> {
+	// 	match self.transaction.message() {
+	// 		VersionedMessage::Legacy(msg) => {
+	// 			let ix = &msg.instructions[0];
+	// 			ix.accounts
+	// 				.iter()
+	// 				.map(|&idx| AccountMeta {
+	// 					pubkey: msg.account_keys[idx as usize],
+	// 					is_signer: msg.is_signer(idx as usize),
+	// 					is_writable: msg.is_maybe_writable(idx as usize, None),
+	// 				})
+	// 				.collect()
+	// 		}
+	// 		VersionedMessage::V0(msg) => {
+	// 			let ix = &msg.instructions[0];
+	// 			ix.accounts
+	// 				.iter()
+	// 				.map(|&idx| AccountMeta {
+	// 					pubkey: msg.account_keys[idx as usize],
+	// 					is_signer: msg.is_signer(idx as usize),
+	// 					is_writable: msg.is_maybe_writable(idx as usize, None),
+	// 				})
+	// 				.collect()
+	// 		}
+	// 	}
+	// }
 
 	/// Returns the instruction data
 	pub fn data(&self) -> &[u8] {
-		&self.transaction.instructions()[0].data
+		match self.transaction.message() {
+			VersionedMessage::Legacy(msg) => &msg.instructions[0].data,
+			VersionedMessage::V0(msg) => &msg.instructions[0].data,
+		}
 	}
 
 	/// Returns the instruction index
@@ -167,14 +196,14 @@ impl<'a> Default for DecoderType {
 /// containing information about account and instruction decoders that can be used
 /// to decode program data and instructions.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
-pub struct ContractSpec(DecoderType);
+pub struct ContractSpec(InstructionType);
 
 #[cfg(test)]
 mod tests {
 	use crate::{
 		models::{
 			MatchConditions, SolanaDecodedInstruction, SolanaInstructionDecoder,
-			SolanaTransactionMetadata, SolanaTransactionStatusMeta,
+			SolanaTransactionStatusMeta,
 		},
 		utils::tests::solana::{
 			instruction::{InstructionBuilder, InstructionMetadataBuilder},
@@ -188,6 +217,7 @@ mod tests {
 		instruction::{AccountMeta, Instruction},
 		message::{Message, VersionedMessage},
 		pubkey::Pubkey,
+		transaction::VersionedTransaction,
 	};
 	use std::str::FromStr;
 
@@ -227,10 +257,10 @@ mod tests {
 		let instruction = create_kamino_lend_instruction();
 		let metadata = InstructionMetadataBuilder::new().build();
 		let transaction = TransactionBuilder::new()
-			.slot(metadata.slot)
-			.signature(metadata.signature)
-			.fee_payer(metadata.fee_payer)
-			.block_time(metadata.block_time.unwrap_or(0))
+			.slot(metadata.transaction_metadata.slot)
+			.signature(metadata.transaction_metadata.signature)
+			.fee_payer(metadata.transaction_metadata.fee_payer)
+			.block_time(metadata.transaction_metadata.block_time.unwrap_or(0))
 			.instruction(SolanaDecodedInstruction {
 				program_id: instruction.program_id,
 				data: instruction.data.clone(),
@@ -251,10 +281,12 @@ mod tests {
 		);
 
 		assert_eq!(monitor_match.monitor.name, "KaminoLendMonitor");
-		assert_eq!(monitor_match.slot(), metadata.slot);
-		assert_eq!(monitor_match.signature(), &metadata.signature);
+		assert_eq!(monitor_match.slot(), metadata.transaction_metadata.slot);
+		assert_eq!(
+			monitor_match.signature(),
+			&metadata.transaction_metadata.signature
+		);
 		assert_eq!(monitor_match.program_id(), &instruction.program_id);
-		assert_eq!(monitor_match.accounts(), &instruction.accounts);
 		assert_eq!(monitor_match.data(), &instruction.data);
 		assert_eq!(monitor_match.instruction_index(), 0);
 		assert_eq!(monitor_match.stack_height(), 0);
@@ -299,24 +331,30 @@ mod tests {
 			},
 			None,
 			SolanaTransaction {
-				metadata: SolanaTransactionMetadata {
-					slot: metadata.slot,
-					signature: metadata.signature,
-					fee_payer: metadata.fee_payer,
-					meta: SolanaTransactionStatusMeta::default(),
-					message: VersionedMessage::Legacy(Message::default()),
-					block_time: metadata.block_time,
-				},
-				instructions: vec![SolanaDecodedInstruction {
-					program_id: nested_instruction.instruction.program_id,
-					data: nested_instruction.instruction.data.clone(),
-					accounts: nested_instruction.instruction.accounts.clone(),
-				}],
+				signature: metadata.transaction_metadata.signature,
+				transaction: VersionedTransaction::from(
+					solana_sdk::transaction::Transaction::new_unsigned(Message::new(
+						&[nested_instruction.instruction],
+						Some(&metadata.transaction_metadata.fee_payer),
+					)),
+				),
+				meta: SolanaTransactionStatusMeta::default(),
+				slot: metadata.transaction_metadata.slot,
+				block_time: metadata.transaction_metadata.block_time,
 			},
 		);
 
-		assert_eq!(monitor_match.transaction.instructions.len(), 1);
-		let instruction = &monitor_match.transaction.instructions[0];
+		assert_eq!(
+			match monitor_match.transaction.message() {
+				VersionedMessage::Legacy(msg) => msg.instructions.len(),
+				VersionedMessage::V0(msg) => msg.instructions.len(),
+			},
+			1
+		);
+		let instruction = match monitor_match.transaction.message() {
+			VersionedMessage::Legacy(msg) => &msg.instructions[0],
+			VersionedMessage::V0(msg) => &msg.instructions[0],
+		};
 		assert_eq!(instruction.accounts.len(), 2);
 	}
 

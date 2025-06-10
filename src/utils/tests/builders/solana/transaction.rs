@@ -2,8 +2,9 @@ use crate::models::{
 	SolanaDecodedInstruction, SolanaTransaction, SolanaTransactionMetadata,
 	SolanaTransactionStatusMeta,
 };
+use solana_instruction;
 use solana_sdk::{
-	message::{Message, VersionedMessage},
+	message::{v0::LoadedMessage, Message, VersionedMessage},
 	pubkey::Pubkey,
 	signature::Signature,
 };
@@ -89,8 +90,47 @@ impl TransactionBuilder {
 		};
 
 		SolanaTransaction {
-			metadata,
-			instructions: self.instructions,
+			signature: metadata.signature,
+			transaction: match metadata.message {
+				VersionedMessage::Legacy(msg) => {
+					solana_sdk::transaction::VersionedTransaction::from(
+						solana_sdk::transaction::Transaction::new_unsigned(msg),
+					)
+				}
+				VersionedMessage::V0(msg) => {
+					let loaded_msg = LoadedMessage::new(
+						msg.clone(),
+						solana_sdk::message::v0::LoadedAddresses::default(),
+						&solana_sdk::reserved_account_keys::ReservedAccountKeys::empty_key_set(),
+					);
+					let instructions: Vec<_> = msg
+						.instructions
+						.iter()
+						.map(|ix| solana_instruction::Instruction {
+							program_id: loaded_msg.account_keys()[ix.program_id_index as usize],
+							accounts: ix
+								.accounts
+								.iter()
+								.map(|&idx| solana_instruction::AccountMeta {
+									pubkey: loaded_msg.account_keys()[idx as usize],
+									is_signer: loaded_msg.is_signer(idx as usize),
+									is_writable: loaded_msg.is_writable(idx as usize),
+								})
+								.collect(),
+							data: ix.data.clone(),
+						})
+						.collect();
+					solana_sdk::transaction::VersionedTransaction::from(
+						solana_sdk::transaction::Transaction::new_unsigned(Message::new(
+							&instructions,
+							Some(&loaded_msg.account_keys()[0]),
+						)),
+					)
+				}
+			},
+			meta: metadata.meta,
+			slot: metadata.slot,
+			block_time: metadata.block_time,
 		}
 	}
 }

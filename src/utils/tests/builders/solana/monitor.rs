@@ -1,6 +1,6 @@
 use crate::models::{
 	AddressWithSpec, ContractSpec, EventCondition, FunctionCondition, MatchConditions, Monitor,
-	SolanaContractSpec, TransactionCondition, TriggerConditions,
+	TransactionCondition, TriggerConditions,
 };
 
 /// Builder for creating test monitors

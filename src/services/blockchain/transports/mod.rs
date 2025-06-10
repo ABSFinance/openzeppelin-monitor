@@ -10,9 +10,9 @@ mod evm {
 mod stellar {
 	pub mod http;
 }
-// mod solana {
-// 	pub mod http;
-// }
+mod solana {
+	pub mod http;
+}
 
 mod endpoint_manager;
 mod http;
@@ -20,6 +20,7 @@ mod http;
 pub use endpoint_manager::EndpointManager;
 pub use evm::http::EVMTransportClient;
 pub use http::HttpTransportClient;
+pub use solana::http::SolanaTransportClient;
 pub use stellar::http::StellarTransportClient;
 
 use reqwest_middleware::ClientWithMiddleware;
