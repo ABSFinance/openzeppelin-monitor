@@ -196,7 +196,13 @@ impl<'a> Default for DecoderType {
 /// containing information about account and instruction decoders that can be used
 /// to decode program data and instructions.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
-pub struct ContractSpec(InstructionType);
+pub struct ContractSpec(pub InstructionType);
+
+impl ContractSpec {
+	pub fn instruction_type(&self) -> &InstructionType {
+		&self.0
+	}
+}
 
 #[cfg(test)]
 mod tests {

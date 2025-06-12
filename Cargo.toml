@@ -85,6 +85,8 @@ spl-token = "6.0.0"
 # carbon
 carbon-core = "0.8.1"
 carbon-kamino-lending-decoder = "0.8.1"
+carbon-kamino-farms-decoder = "0.8.1"
+carbon-jupiter-dca-decoder = "0.8.1"
 
 [dev-dependencies]
 cargo-llvm-cov = "0.6"

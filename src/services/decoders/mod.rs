@@ -4,7 +4,13 @@
 //! instructions and account data.
 
 use {
-	carbon_core::instruction::{DecodedInstruction, InstructionDecoder},
+	carbon_core::{
+		deserialize::CarbonDeserialize,
+		instruction::{DecodedInstruction, InstructionDecoder},
+		try_decode_instructions,
+	},
+	carbon_jupiter_dca_decoder::{instructions::JupiterDcaInstruction, JupiterDcaDecoder},
+	carbon_kamino_farms_decoder::{instructions::KaminoFarmsInstruction, KaminoFarmsDecoder},
 	carbon_kamino_lending_decoder::{
 		accounts::KaminoLendingAccount, instructions::KaminoLendingInstruction,
 		KaminoLendingDecoder,
@@ -13,6 +19,21 @@ use {
 	solana_sdk::pubkey::Pubkey,
 	std::fmt,
 };
+
+macro_rules! try_decode_instructions {
+	($instruction:expr, $($variant:path => $decoder:expr),* $(,)?) => {{
+		$(
+			if let Some(decoded) = $decoder.decode_instruction($instruction) {
+				return Some(DecodedInstruction {
+					program_id: decoded.program_id,
+					data: $variant(decoded.data),
+					accounts: decoded.accounts,
+				});
+			}
+		)*
+		None
+	}};
+}
 
 /// Wrapper for KaminoLendingAccount to handle serialization
 #[derive(Clone)]
@@ -111,12 +132,12 @@ pub enum InstructionType {
 	Unknown,
 	AssociatedTokenAccount,
 	KaminoLendingInstruction(KaminoLendingInstruction),
-	KaminoFarms,
+	KaminoFarmsInstruction(KaminoFarmsInstruction),
 	KaminoLimitOrder,
 	JupiterSwap,
 	JupiterLimitOrder,
 	JupiterLimitOrder2,
-	JupiterDCA,
+	JupiterDCA(JupiterDcaInstruction),
 	JupiterPerpetuals,
 	DriftV2,
 	MarginfiV2,
@@ -156,38 +177,41 @@ impl From<KaminoLendingInstruction> for InstructionType {
 	}
 }
 
+/// Trait for decoders that can handle different instruction types
+pub trait DecoderTrait {
+	type InstructionType;
+	fn decode_instruction(
+		&self,
+		instruction: &solana_instruction::Instruction,
+	) -> Option<DecodedInstruction<Self::InstructionType>>;
+}
+
 /// A decoder that can handle different instruction types
 pub struct Decoder {
-	kamino_decoder: KaminoLendingDecoder,
-	// Add other decoders here as needed
+	kamino_lending_decoder: KaminoLendingDecoder,
+	kamino_farms_decoder: KaminoFarmsDecoder,
+	jupiter_dca_decoder: JupiterDcaDecoder,
 }
 
 impl Decoder {
 	pub fn new() -> Self {
 		Self {
-			kamino_decoder: KaminoLendingDecoder,
-			// Initialize other decoders
+			kamino_lending_decoder: KaminoLendingDecoder,
+			kamino_farms_decoder: KaminoFarmsDecoder,
+			jupiter_dca_decoder: JupiterDcaDecoder,
 		}
 	}
-}
 
-impl<'a> InstructionDecoder<'a> for Decoder {
-	type InstructionType = InstructionType;
-
-	fn decode_instruction(
+	pub fn decode_instruction(
 		&self,
-		instruction: &'a solana_instruction::Instruction,
-	) -> Option<DecodedInstruction<Self::InstructionType>> {
-		// Try Kamino decoder
-		if let Some(decoded) = self.kamino_decoder.decode_instruction(instruction) {
-			return Some(DecodedInstruction {
-				program_id: decoded.program_id,
-				data: InstructionType::KaminoLendingInstruction(decoded.data),
-				accounts: decoded.accounts,
-			});
-		}
-
-		None
+		instruction: &solana_instruction::Instruction,
+	) -> Option<DecodedInstruction<InstructionType>> {
+		try_decode_instructions!(
+			instruction,
+			InstructionType::KaminoLendingInstruction => &self.kamino_lending_decoder,
+			InstructionType::KaminoFarmsInstruction => &self.kamino_farms_decoder,
+			InstructionType::JupiterDCA => &self.jupiter_dca_decoder,
+		)
 	}
 }
 
