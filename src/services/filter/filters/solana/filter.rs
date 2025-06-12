@@ -18,7 +18,6 @@ use {
 		BlockType, ContractSpec, InstructionCondition, Monitor, MonitorMatch, Network,
 		SolanaContractSpec, TransactionCondition, TransactionStatus,
 	},
-	solana_sdk::transaction::Transaction,
 	std::marker::PhantomData,
 };
 
@@ -26,11 +25,18 @@ use async_trait::async_trait;
 
 // Add Carbon's instruction types
 use carbon_core::instruction::{DecodedInstruction, InstructionDecoder};
-use carbon_kamino_lending_decoder::instructions::KaminoLendingInstruction;
+
+use carbon_jupiter_dca_decoder::JupiterDcaDecoder;
+use carbon_kamino_farms_decoder::{instructions::KaminoFarmsInstruction, KaminoFarmsDecoder};
+use carbon_kamino_lending_decoder::{
+	instructions::{init_lending_market, KaminoLendingInstruction},
+	KaminoLendingDecoder,
+};
 
 pub struct SolanaBlockFilter<T> {
 	pub _client: PhantomData<T>,
 	pub helpers: SolanaFilterHelpers,
+	pub decoder: Decoder,
 }
 
 impl<T> SolanaBlockFilter<T> {
@@ -38,17 +44,7 @@ impl<T> SolanaBlockFilter<T> {
 		Self {
 			_client: PhantomData,
 			helpers: SolanaFilterHelpers::new(),
-		}
-	}
-
-	pub fn set_decoder<D: Send + Sync + 'static>(
-		&mut self,
-		instruction_type: InstructionType,
-	) -> Box<dyn for<'a> InstructionDecoder<'a, InstructionType = D> + Send + Sync + 'static> {
-		match instruction_type {
-			_ => {
-				Box::new(KaminoLendingDecoder::new());
-			}
+			decoder: Decoder::new(),
 		}
 	}
 
@@ -114,7 +110,7 @@ impl<T> SolanaBlockFilter<T> {
 	/// Finds transactions that match the monitor's conditions (EVM-style)
 	pub fn find_matching_transaction(
 		&self,
-		transaction: &Transaction,
+		transaction: &SolanaTransaction,
 		monitor: &Monitor,
 		matched_transactions: &mut Vec<TransactionCondition>,
 	) {
@@ -129,36 +125,12 @@ impl<T> SolanaBlockFilter<T> {
 				let status_matches = true;
 				if status_matches {
 					if let Some(expr) = &condition.expression {
-						let tx_params = vec![
-							SolanaMatchParamEntry {
-								name: "signature".to_string(),
-								value: transaction.signatures[0].to_string(),
-								kind: "string".to_string(),
-								indexed: false,
-							},
-							SolanaMatchParamEntry {
-								name: "fee_payer".to_string(),
-								value: transaction.message.account_keys[0].to_string(),
-								kind: "pubkey".to_string(),
-								indexed: false,
-							},
-							SolanaMatchParamEntry {
-								name: "recent_blockhash".to_string(),
-								value: transaction.message.recent_blockhash.to_string(),
-								kind: "string".to_string(),
-								indexed: false,
-							},
-							SolanaMatchParamEntry {
-								name: "fee".to_string(),
-								value: transaction
-									.message
-									.header
-									.num_required_signatures
-									.to_string(),
-								kind: "u8".to_string(),
-								indexed: false,
-							},
-						];
+						let tx_params = vec![SolanaMatchParamEntry {
+							name: "signature".to_string(),
+							value: transaction.signature.to_string(),
+							kind: "string".to_string(),
+							indexed: false,
+						}];
 						if self.evaluate_expression(expr, &Some(tx_params)) {
 							matched_transactions.push(TransactionCondition {
 								expression: Some(expr.to_string()),
@@ -201,47 +173,41 @@ impl<T> SolanaBlockFilter<T> {
 
 			for nested_instruction in nested_instructions.iter() {
 				// Find matching contract spec and decoder
-				if let Some((_, instruction_type)) = contract_specs.iter().find(|(address, _)| {
+				if let Some((_, contract_spec)) = contract_specs.iter().find(|(address, _)| {
 					address == &nested_instruction.instruction.program_id.to_string()
 				}) {
-					let decoder = self.set_decoder(instruction_type);
-
-					if let Some(decoded_instruction) =
-						decoder.decode_instruction(&nested_instruction.instruction)
+					if let Some(decoded_instruction) = self
+						.decoder
+						.decode_instruction(&nested_instruction.instruction)
 					{
-						for condition in &monitor.match_conditions.functions {
-							// Match the instruction type based on the signature
-							let matches = SolanaFilterHelpers::matches_instruction_type(
-								&decoded_instruction,
-								&condition.signature,
-							);
+						if Self::instruction_types_match(&decoded_instruction, contract_spec) {
+							for condition in &monitor.match_conditions.functions {
+								// Match the instruction type based on the signature
+								let matches = SolanaFilterHelpers::matches_instruction_type(
+									&decoded_instruction,
+									&condition.signature,
+								);
 
-							if matches {
-								if let Some(expr) = &condition.expression {
-									// Create match parameters for the instruction
-									let tx_params = vec![
-										SolanaMatchParamEntry {
-											name: "program_id".to_string(),
-											value: decoded_instruction.program_id.to_string(),
-											kind: "pubkey".to_string(),
-											indexed: false,
-										},
-										// Add more parameters based on the instruction type
-									];
+								if matches {
+									if let Some(expr) = &condition.expression {
+										// Create match parameters for the instruction
+										let tx_params =
+											self.extract_fields(&decoded_instruction.data);
 
-									if self.evaluate_expression(expr, &Some(tx_params)) {
+										if self.evaluate_expression(expr, &Some(tx_params)) {
+											matched_functions.push(FunctionCondition {
+												signature: condition.signature.clone(),
+												expression: Some(expr.to_string()),
+											});
+											break;
+										}
+									} else {
 										matched_functions.push(FunctionCondition {
 											signature: condition.signature.clone(),
-											expression: Some(expr.to_string()),
+											expression: None,
 										});
 										break;
 									}
-								} else {
-									matched_functions.push(FunctionCondition {
-										signature: condition.signature.clone(),
-										expression: None,
-									});
-									break;
 								}
 							}
 						}
@@ -249,6 +215,41 @@ impl<T> SolanaBlockFilter<T> {
 				}
 			}
 		}
+	}
+
+	fn extract_fields(&self, data: &InstructionType) -> Vec<SolanaMatchParamEntry> {
+		let mut params = Vec::new();
+
+		// Helper function to add a field
+		fn add_field<T: std::fmt::Debug>(
+			params: &mut Vec<SolanaMatchParamEntry>,
+			name: &str,
+			value: &T,
+		) {
+			params.push(SolanaMatchParamEntry {
+				name: name.to_string(),
+				value: format!("{:?}", value),
+				kind: std::any::type_name::<T>().to_string(),
+				indexed: false,
+			});
+		}
+
+		// Get all fields from the instruction data using serde
+		let json = serde_json::to_value(data).unwrap();
+		if let serde_json::Value::Object(map) = json {
+			for (key, value) in map {
+				add_field(&mut params, &key, &value);
+			}
+		}
+
+		params
+	}
+
+	fn instruction_types_match(
+		decoded: &DecodedInstruction<InstructionType>,
+		spec: &SolanaContractSpec,
+	) -> bool {
+		std::mem::discriminant(&decoded.data) == std::mem::discriminant(spec.instruction_type())
 	}
 }
 
@@ -274,41 +275,26 @@ impl<T: Send + Sync> BlockFilter for SolanaBlockFilter<T> {
 		Ok(Vec::new())
 	}
 }
-// KaminoLendingDecoder implementation
-struct KaminoLendingDecoder;
-
-impl KaminoLendingDecoder {
-	fn new() -> Self {
-		Self
-	}
-}
-
-impl<'a> InstructionDecoder<'a> for KaminoLendingDecoder {
-	type InstructionType = KaminoLendingInstruction;
-
-	fn decode_instruction(
-		&self,
-		instruction: &'a solana_instruction::Instruction,
-	) -> Option<DecodedInstruction<Self::InstructionType>> {
-		// Use the actual KaminoLendingDecoder from carbon_kamino_lending_decoder
-		// This is a placeholder - you'll need to implement the actual decoding logic
-		None
-	}
-}
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::{
 		models::{AddressWithSpec, EventCondition, FunctionCondition, MatchConditions},
-		utils::tests::builders::solana::monitor::MonitorBuilder,
+		utils::tests::{
+			builders::solana::monitor::MonitorBuilder, solana::transaction::TransactionBuilder,
+		},
 	};
-	use solana_sdk::instruction::Instruction;
+	use carbon_jupiter_dca_decoder::instructions::{open_dca, JupiterDcaInstruction};
+	use solana_instruction::AccountMeta;
+	use solana_sdk::pubkey::Pubkey;
+	use solana_sdk::{instruction::Instruction, message::VersionedMessage};
 
 	use solana_sdk::{
 		message::Message, signature::Keypair, signer::Signer, system_instruction,
 		transaction::Transaction,
 	};
+	use solana_signature::Signature;
 
 	fn create_test_filter() -> SolanaBlockFilter<()> {
 		SolanaBlockFilter::new()
@@ -337,13 +323,30 @@ mod tests {
 			.build()
 	}
 
-	fn create_test_transaction(
-		fee_payer: &Keypair,
-		instructions: Vec<Instruction>,
-		recent_blockhash: solana_sdk::hash::Hash,
-	) -> Transaction {
-		let message = Message::new(&instructions, Some(&fee_payer.pubkey()));
-		Transaction::new(&[fee_payer], message, recent_blockhash)
+	fn create_test_transaction() -> SolanaTransaction {
+		let fee_payer = Keypair::new();
+		let program_id = Pubkey::new_unique();
+		let account1 = Pubkey::new_unique();
+		let account2 = Pubkey::new_unique();
+
+		let instruction = Instruction {
+			program_id,
+			accounts: vec![
+				AccountMeta::new(account1, true),
+				AccountMeta::new(account2, false),
+			],
+			data: vec![1, 2, 3, 4],
+		};
+
+		let message = Message::new(&[instruction], Some(&fee_payer.pubkey()));
+		let signature = Signature::new_unique();
+
+		TransactionBuilder::new()
+			.slot(12345)
+			.signature(signature)
+			.message(VersionedMessage::Legacy(message))
+			.block_time(1678901234)
+			.build()
 	}
 
 	#[test]
@@ -352,9 +355,7 @@ mod tests {
 		let mut matched = Vec::new();
 		let monitor = create_test_monitor(vec![], vec![], vec![], vec![]);
 
-		let fee_payer = Keypair::new();
-		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
-		let transaction = create_test_transaction(&fee_payer, vec![], recent_blockhash);
+		let transaction = create_test_transaction();
 
 		filter.find_matching_transaction(&transaction, &monitor, &mut matched);
 
@@ -368,15 +369,13 @@ mod tests {
 		let filter = create_test_filter();
 		let mut matched = Vec::new();
 
-		let fee_payer = Keypair::new();
-		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
-		let transaction = create_test_transaction(&fee_payer, vec![], recent_blockhash);
+		let transaction = create_test_transaction();
 
 		let monitor = create_test_monitor(
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("signature == {}", transaction.signatures[0])),
+				expression: Some(format!("in_amount > 0")),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -385,10 +384,7 @@ mod tests {
 		filter.find_matching_transaction(&transaction, &monitor, &mut matched);
 
 		assert_eq!(matched.len(), 1);
-		assert_eq!(
-			matched[0].expression,
-			Some(format!("signature == {}", transaction.signatures[0]))
-		);
+		assert_eq!(matched[0].expression, Some(format!("in_amount > 0")));
 		assert_eq!(matched[0].status, TransactionStatus::Any);
 	}
 
@@ -397,15 +393,13 @@ mod tests {
 		let filter = create_test_filter();
 		let mut matched = Vec::new();
 
-		let fee_payer = Keypair::new();
-		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
-		let transaction = create_test_transaction(&fee_payer, vec![], recent_blockhash);
+		let transaction = create_test_transaction();
 
 		let monitor = create_test_monitor(
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("fee_payer == {}", fee_payer.pubkey())),
+				expression: Some(format!("block_time > 0")),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -414,10 +408,7 @@ mod tests {
 		filter.find_matching_transaction(&transaction, &monitor, &mut matched);
 
 		assert_eq!(matched.len(), 1);
-		assert_eq!(
-			matched[0].expression,
-			Some(format!("fee_payer == {}", fee_payer.pubkey()))
-		);
+		assert_eq!(matched[0].expression, Some(format!("block_time > 0")));
 		assert_eq!(matched[0].status, TransactionStatus::Any);
 	}
 
@@ -426,19 +417,13 @@ mod tests {
 		let filter = create_test_filter();
 		let mut matched = Vec::new();
 
-		let fee_payer = Keypair::new();
-		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
-		let transaction = create_test_transaction(&fee_payer, vec![], recent_blockhash);
+		let transaction = create_test_transaction();
 
 		let monitor = create_test_monitor(
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!(
-					"fee_payer == {} AND signature == {}",
-					fee_payer.pubkey(),
-					transaction.signatures[0]
-				)),
+				expression: Some(format!("block_time > 0 AND in_amount > 0")),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -449,11 +434,7 @@ mod tests {
 		assert_eq!(matched.len(), 1);
 		assert_eq!(
 			matched[0].expression,
-			Some(format!(
-				"fee_payer == {} AND signature == {}",
-				fee_payer.pubkey(),
-				transaction.signatures[0]
-			))
+			Some(format!("block_time > 0 AND in_amount > 0"))
 		);
 		assert_eq!(matched[0].status, TransactionStatus::Any);
 	}
@@ -463,16 +444,14 @@ mod tests {
 		let filter = create_test_filter();
 		let mut matched = Vec::new();
 
-		let fee_payer = Keypair::new();
-		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
-		let transaction = create_test_transaction(&fee_payer, vec![], recent_blockhash);
+		let transaction = create_test_transaction();
 
 		let different_pubkey = Keypair::new().pubkey();
 		let monitor = create_test_monitor(
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("fee_payer == {}", different_pubkey)),
+				expression: Some(format!("block_time > 0")),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -495,18 +474,13 @@ mod tests {
 		let transfer_instruction =
 			system_instruction::transfer(&fee_payer.pubkey(), &recipient.pubkey(), 1000);
 
-		let transaction =
-			create_test_transaction(&fee_payer, vec![transfer_instruction], recent_blockhash);
+		let transaction = create_test_transaction();
 
 		let monitor = create_test_monitor(
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!(
-					"fee_payer == {} AND recent_blockhash == {}",
-					fee_payer.pubkey(),
-					recent_blockhash
-				)),
+				expression: Some(format!("block_time > 0")),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -515,14 +489,88 @@ mod tests {
 		filter.find_matching_transaction(&transaction, &monitor, &mut matched);
 
 		assert_eq!(matched.len(), 1);
-		assert_eq!(
-			matched[0].expression,
-			Some(format!(
-				"fee_payer == {} AND recent_blockhash == {}",
-				fee_payer.pubkey(),
-				recent_blockhash
-			))
-		);
+		assert_eq!(matched[0].expression, Some(format!("block_time > 0")));
 		assert_eq!(matched[0].status, TransactionStatus::Any);
+	}
+
+	#[test]
+	fn test_find_matching_functions_for_transaction() {
+		let filter = create_test_filter();
+		let mut matched_functions = Vec::new();
+		let mut matched_on_args = SolanaMatchArguments {
+			instructions: Some(Vec::new()),
+			accounts: Some(Vec::new()),
+		};
+
+		// Create test instruction
+		let fee_payer = Keypair::new();
+		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
+		let instruction = Instruction {
+			program_id: Pubkey::from_str_const("DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"),
+			accounts: vec![
+				AccountMeta::new(
+					Pubkey::from_str_const("CfBLHEJkCUqn5LrST6ptAG96UrkjB5pfZFc98LUQUY3g"),
+					false,
+				),
+				AccountMeta::new(
+					Pubkey::from_str_const("ByBxpqTdJUQt5NpnJJp9GzovBmnT3hmMx1CqhtRAKaK1"),
+					true,
+				),
+			],
+			data: vec![1, 0, 0, 0, 0, 0, 0, 0], // OpenDca instruction data
+		};
+
+		let transaction = create_test_transaction();
+
+		// Create contract spec
+		let contract_spec = SolanaContractSpec(InstructionType::JupiterDCA(
+			JupiterDcaInstruction::OpenDca(open_dca::OpenDca {
+				application_idx: 0,
+				in_amount: 0,
+				in_amount_per_cycle: 0,
+				cycle_frequency: 0,
+				min_out_amount: None,
+				max_out_amount: None,
+				start_at: None,
+				close_wsol_in_ata: None,
+			}),
+		));
+
+		let program_id = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M".to_string();
+		let contract_specs = vec![(program_id.clone(), contract_spec.clone())];
+
+		// Create monitor with function condition
+		let monitor = MonitorBuilder::new()
+			.name("test")
+			.networks(vec!["solana_mainnet".to_string()])
+			.match_conditions(MatchConditions {
+				events: vec![],
+				functions: vec![FunctionCondition {
+					signature: "OpenDca".to_string(),
+					expression: Some("in_amount > 0".to_string()),
+				}],
+				transactions: vec![],
+			})
+			.addresses_with_spec(vec![(
+				program_id,
+				Some(ContractSpec::Solana(contract_spec)),
+			)])
+			.build();
+
+		// Test function matching
+		filter.find_matching_functions_for_transaction(
+			&contract_specs,
+			&transaction,
+			&monitor,
+			&mut matched_functions,
+			&mut matched_on_args,
+		);
+
+		assert_eq!(matched_functions.len(), 1);
+		assert_eq!(matched_functions[0].signature, "OpenDca");
+		assert_eq!(
+			matched_functions[0].expression,
+			Some("in_amount > 0".to_string())
+		);
 	}
 }

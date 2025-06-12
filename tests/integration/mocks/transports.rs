@@ -125,3 +125,59 @@ impl RotatingTransport for MockStellarTransportClient {
 		Ok(())
 	}
 }
+
+mock! {
+	pub SolanaTransportClient {
+		pub async fn send_raw_request(&self, method: &str, params: Option<Value>) -> Result<Value, anyhow::Error>;
+		pub async fn get_current_url(&self) -> String;
+	}
+
+	impl Clone for SolanaTransportClient {
+		fn clone(&self) -> Self;
+	}
+}
+
+#[async_trait::async_trait]
+impl BlockchainTransport for MockSolanaTransportClient {
+	async fn get_current_url(&self) -> String {
+		self.get_current_url().await
+	}
+
+	async fn send_raw_request<P>(
+		&self,
+		method: &str,
+		params: Option<P>,
+	) -> Result<Value, anyhow::Error>
+	where
+		P: Into<Value> + Send + Clone,
+	{
+		self.send_raw_request(method, params.map(|p| p.into()))
+			.await
+	}
+
+	fn set_retry_policy(
+		&mut self,
+		_: ExponentialBackoff,
+		_: Option<TransientErrorRetryStrategy>,
+	) -> Result<(), anyhow::Error> {
+		Ok(())
+	}
+
+	fn update_endpoint_manager_client(
+		&mut self,
+		_: ClientWithMiddleware,
+	) -> Result<(), anyhow::Error> {
+		Ok(())
+	}
+}
+
+#[async_trait::async_trait]
+impl RotatingTransport for MockSolanaTransportClient {
+	async fn try_connect(&self, _url: &str) -> Result<(), anyhow::Error> {
+		Ok(())
+	}
+
+	async fn update_client(&self, _url: &str) -> Result<(), anyhow::Error> {
+		Ok(())
+	}
+}
