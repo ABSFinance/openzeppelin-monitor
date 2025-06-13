@@ -10,8 +10,9 @@ mod network;
 mod trigger;
 
 pub use monitor::{
-	AddressWithSpec, EventCondition, FunctionCondition, MatchConditions, Monitor, ScriptLanguage,
-	InstructionCondition, TransactionCondition, TransactionStatus, TriggerConditions,
+	AddressWithSpec, EventCondition, FunctionCondition, InstructionCondition, MatchConditions,
+	Monitor, ScriptLanguage, SolanaMatchConditions, TransactionCondition, TransactionStatus,
+	TriggerConditions,
 };
 pub use network::{Network, RpcUrl};
 pub use trigger::{NotificationMessage, Trigger, TriggerType, TriggerTypeConfig};

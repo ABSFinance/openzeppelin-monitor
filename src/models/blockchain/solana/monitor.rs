@@ -1,6 +1,6 @@
 use {
 	crate::{
-		models::{MatchConditions, Monitor, SolanaInstructionMetadata, SolanaTransaction},
+		models::{Monitor, SolanaInstructionMetadata, SolanaMatchConditions, SolanaTransaction},
 		services::decoders::{AccountType, InstructionType},
 	},
 	serde::{Deserialize, Serialize},
@@ -43,8 +43,6 @@ pub struct SolanaMatchParamsMap {
 	pub signature: String,
 	/// Arguments of the instruction
 	pub args: Option<Vec<SolanaMatchParamEntry>>,
-	/// Hex signature of the instruction
-	pub hex_signature: Option<String>,
 }
 
 /// Represents matched arguments in a Solana transaction
@@ -65,7 +63,7 @@ pub struct SolanaMonitorMatch {
 	/// Network slug that the transaction was sent from
 	pub network_slug: String,
 	/// Conditions that were matched
-	pub matched_on: MatchConditions,
+	pub matched_on: SolanaMatchConditions,
 	/// Decoded arguments from the matched conditions
 	pub matched_on_args: Option<SolanaMatchArguments>,
 	/// Transaction that triggered the match
@@ -77,7 +75,7 @@ impl SolanaMonitorMatch {
 	pub fn new(
 		monitor: Monitor,
 		network_slug: String,
-		matched_on: MatchConditions,
+		matched_on: SolanaMatchConditions,
 		matched_on_args: Option<SolanaMatchArguments>,
 		transaction: SolanaTransaction,
 	) -> Self {
@@ -160,7 +158,7 @@ impl SolanaMonitorMatch {
 	}
 
 	/// Returns the matched conditions
-	pub fn matched_on(&self) -> &MatchConditions {
+	pub fn matched_on(&self) -> &SolanaMatchConditions {
 		&self.matched_on
 	}
 
@@ -207,10 +205,7 @@ impl ContractSpec {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		models::{
-			MatchConditions, SolanaDecodedInstruction, SolanaInstructionDecoder,
-			SolanaTransactionStatusMeta,
-		},
+		models::{SolanaDecodedInstruction, SolanaInstructionDecoder, SolanaTransactionStatusMeta},
 		utils::tests::solana::{
 			instruction::{InstructionBuilder, InstructionMetadataBuilder},
 			monitor::MonitorBuilder,
@@ -277,9 +272,9 @@ mod tests {
 		let monitor_match = SolanaMonitorMatch::new(
 			monitor.clone(),
 			"solana_mainnet".to_string(),
-			MatchConditions {
-				functions: vec![],
-				events: vec![],
+			SolanaMatchConditions {
+				instructions: vec![],
+				accounts: vec![],
 				transactions: vec![],
 			},
 			None,
@@ -299,9 +294,9 @@ mod tests {
 		assert_eq!(monitor_match.network_slug, "solana_mainnet");
 		assert_eq!(
 			monitor_match.matched_on,
-			MatchConditions {
-				functions: vec![],
-				events: vec![],
+			SolanaMatchConditions {
+				instructions: vec![],
+				accounts: vec![],
 				transactions: vec![],
 			}
 		);
@@ -330,9 +325,9 @@ mod tests {
 		let monitor_match = SolanaMonitorMatch::new(
 			monitor,
 			"solana_mainnet".to_string(),
-			MatchConditions {
-				functions: vec![],
-				events: vec![],
+			SolanaMatchConditions {
+				instructions: vec![],
+				accounts: vec![],
 				transactions: vec![],
 			},
 			None,

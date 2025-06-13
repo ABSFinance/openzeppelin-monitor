@@ -55,7 +55,62 @@ pub async fn handle_match<T: TriggerExecutionServiceTrait>(
 	trigger_scripts: &HashMap<String, (ScriptLanguage, String)>,
 ) -> Result<(), FilterError> {
 	match &matching_monitor {
-		MonitorMatch::Solana(solana_monitor_match) => todo!(),
+		MonitorMatch::Solana(solana_monitor_match) => {
+			let transaction = solana_monitor_match.transaction.clone();
+
+			// Create structured JSON data
+			let mut data_json = json!({
+				"monitor": {
+					"name": solana_monitor_match.monitor.name.clone(),
+				},
+				"transaction": {
+					"signature": transaction.signature().to_string(),
+				},
+				"instructions": [],
+				"accounts": []
+			});
+
+			let instructions = data_json["instructions"].as_array_mut().unwrap();
+			for instruction in solana_monitor_match.matched_on.instructions.iter() {
+				let mut instruction_data = json!({
+					"signature": instruction.signature.clone(),
+					"args": {}
+				});
+
+				if let Some(args) = &solana_monitor_match.matched_on_args {
+					if let Some(instruction_args) = &args.instructions {
+						for instruction_arg in instruction_args {
+							if instruction_arg.signature == instruction.signature {
+								if let Some(arg_entries) = &instruction_arg.args {
+									let args_obj =
+										instruction_data["args"].as_object_mut().unwrap();
+									for arg in arg_entries {
+										args_obj.insert(arg.name.clone(), json!(arg.value.clone()));
+									}
+								}
+							}
+						}
+					}
+				}
+				instructions.push(instruction_data);
+			}
+
+			// Swallow any errors since it's logged in the trigger service and we want to continue
+			// processing other matches
+			let _ = trigger_service
+				.execute(
+					&solana_monitor_match
+						.monitor
+						.triggers
+						.iter()
+						.map(|s| s.to_string())
+						.collect::<Vec<_>>(),
+					json_to_hashmap(&data_json),
+					&matching_monitor,
+					trigger_scripts,
+				)
+				.await;
+		}
 		MonitorMatch::EVM(evm_monitor_match) => {
 			let transaction = evm_monitor_match.transaction.clone();
 			// If sender does not exist, we replace with 0x0000000000000000000000000000000000000000

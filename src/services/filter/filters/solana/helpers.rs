@@ -26,15 +26,26 @@ impl SolanaFilterHelpers {
 	}
 
 	/// Helper function to check if an instruction matches a specific type
+	fn discriminator<T: std::fmt::Debug>(instruction: T) -> String {
+		let debug_str = format!("{:?}", instruction);
+
+		debug_str
+			.split('(')
+			.nth(1)
+			.unwrap_or("")
+			.split('(')
+			.next()
+			.unwrap_or("")
+			.to_string()
+	}
+
 	pub fn matches_instruction_type<T: Into<InstructionType> + std::fmt::Debug + Clone>(
 		decoded_instruction: &DecodedInstruction<T>,
 		signature: &str,
 	) -> bool {
 		let instruction_type: InstructionType = decoded_instruction.data.clone().into();
-		match instruction_type {
-			InstructionType::KaminoLendingInstruction(ix) => format!("{:?}", ix) == signature,
-			_ => false,
-		}
+		let discriminator = Self::discriminator(instruction_type);
+		discriminator == signature
 	}
 
 	/// Check if a transaction matches the given program ID

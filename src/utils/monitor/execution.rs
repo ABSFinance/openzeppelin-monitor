@@ -47,6 +47,7 @@ pub struct MonitorExecutionConfig<
 	pub trigger_execution_service: Arc<TriggerExecutionService<TR>>,
 	pub active_monitors_trigger_scripts: HashMap<String, (ScriptLanguage, String)>,
 	pub client_pool: Arc<CP>,
+	pub slot: Option<u64>,
 }
 pub type ExecutionResult<T> = std::result::Result<T, MonitorExecutionError>;
 
@@ -263,11 +264,37 @@ pub async fn execute_monitor<
 				))
 			}
 			BlockChainType::Solana => {
+				let client = config
+					.client_pool
+					.get_solana_client(&network)
+					.await
+					.map_err(|e| {
+						MonitorExecutionError::execution_error(
+							format!("Failed to get EVM client: {}", e),
+							None,
+							None,
+						)
+					})?;
+
+				let slot = match config.slot {
+					Some(slot) => {
+						tracing::debug!(block = %slot, "Using specified block number");
+						slot
+					}
+					None => {
+						let latest = client.get_latest_block_number().await.map_err(|e| {
+							MonitorExecutionError::execution_error(e.to_string(), None, None)
+						})?;
+						tracing::debug!(block = %latest, "Using latest block number");
+						latest
+					}
+				};
+
 				return Err(MonitorExecutionError::execution_error(
 					"Solana network not supported",
 					None,
 					None,
-				))
+				));
 			}
 		};
 
