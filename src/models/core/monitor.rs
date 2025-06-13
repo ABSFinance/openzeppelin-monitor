@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	models::blockchain::{solana::DecoderType, ContractSpec},
-	services::decoders::InstructionType,
-};
+use crate::models::blockchain::ContractSpec;
 
 /// Configuration for monitoring specific blockchain activity.
 ///
@@ -64,6 +61,14 @@ pub struct MatchConditions {
 	pub transactions: Vec<TransactionCondition>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct SolanaMatchConditions {
+	pub instructions: Vec<InstructionCondition>,
+	pub accounts: Vec<AccountCondition>,
+	pub transactions: Vec<TransactionCondition>,
+}
+
 /// Condition for matching contract function calls
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -75,8 +80,24 @@ pub struct FunctionCondition {
 	pub expression: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct InstructionCondition {
-	pub instruction_type: InstructionType,
+	/// Function signature (e.g., "transfer(address,uint256)")
+	pub signature: String,
+
+	/// Optional expression to filter function parameters
+	pub expression: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+
+pub struct AccountCondition {
+	/// Event signature (e.g., "Transfer(address,address,uint256)")
+	pub signature: String,
+
+	/// Optional expression to filter event parameters
 	pub expression: Option<String>,
 }
 

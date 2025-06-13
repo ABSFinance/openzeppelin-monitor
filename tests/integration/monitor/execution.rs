@@ -201,6 +201,7 @@ async fn test_execute_monitor_evm() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 21305050;
+	let slot = 21305050;
 
 	let trigger_service = setup_trigger_service(HashMap::new());
 	let notification_service = NotificationService::new();
@@ -217,6 +218,7 @@ async fn test_execute_monitor_evm() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(
@@ -262,6 +264,7 @@ async fn test_execute_monitor_evm_wrong_network() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 22197425;
+	let slot = 22197425;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -273,6 +276,7 @@ async fn test_execute_monitor_evm_wrong_network() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(result.is_err());
@@ -315,6 +319,7 @@ async fn test_execute_monitor_evm_wrong_block_number() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 1;
+	let slot = 1;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -326,6 +331,7 @@ async fn test_execute_monitor_evm_wrong_block_number() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(result.is_err());
@@ -368,6 +374,7 @@ async fn test_execute_monitor_evm_failed_to_get_block_by_number() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 1;
+	let slot = 1;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -379,6 +386,7 @@ async fn test_execute_monitor_evm_failed_to_get_block_by_number() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(result.is_err());
@@ -413,6 +421,7 @@ async fn test_execute_monitor_evm_failed_to_get_evm_client() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 1;
+	let slot = 1;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -424,6 +433,7 @@ async fn test_execute_monitor_evm_failed_to_get_evm_client() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(result.is_err());
@@ -477,6 +487,7 @@ async fn test_execute_monitor_stellar() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 172627;
+	let slot = 172627;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -488,6 +499,7 @@ async fn test_execute_monitor_stellar() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(
@@ -542,6 +554,7 @@ async fn test_execute_monitor_failed_to_get_block() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 172627;
+	let slot = 172627;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -553,6 +566,7 @@ async fn test_execute_monitor_failed_to_get_block() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(result.is_err());
@@ -587,6 +601,7 @@ async fn test_execute_monitor_failed_to_get_stellar_client() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 172627;
+	let slot = 172627;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -598,6 +613,7 @@ async fn test_execute_monitor_failed_to_get_stellar_client() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(result.is_err());
@@ -645,6 +661,7 @@ async fn test_execute_monitor_failed_to_get_block_by_number() {
 	let client_pool = Arc::new(mock_pool);
 
 	let block_number = 172627;
+	let slot = 172627;
 
 	let result = execute_monitor(MonitorExecutionConfig {
 		path: test_data.monitor.name.clone(),
@@ -656,6 +673,7 @@ async fn test_execute_monitor_failed_to_get_block_by_number() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(result.is_err());
@@ -707,6 +725,7 @@ async fn test_execute_monitor_get_latest_block_number_failed() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: None,
 	})
 	.await;
 	assert!(result.is_err());
@@ -784,6 +803,7 @@ async fn test_execute_monitor_network_slug_not_defined() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: None,
 	})
 	.await;
 
@@ -824,6 +844,7 @@ async fn test_execute_monitor_midnight() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: None,
 	})
 	.await;
 
@@ -864,6 +885,7 @@ async fn test_execute_monitor_solana() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: None,
 	})
 	.await;
 
@@ -920,6 +942,7 @@ async fn test_execute_monitor_stellar_get_latest_block_number_failed() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: HashMap::new(),
 		client_pool,
+		slot: None,
 	})
 	.await;
 	assert!(result.is_err());
@@ -980,6 +1003,7 @@ async fn test_execute_monitor_evm_with_trigger_scripts() {
 		.return_once(move |_| Ok(Arc::new(mock_client)));
 
 	let block_number = 21305050;
+	let slot = 21305050;
 
 	let trigger_service = setup_trigger_service(HashMap::new());
 	let notification_service = NotificationService::new();
@@ -1007,6 +1031,7 @@ async fn test_execute_monitor_evm_with_trigger_scripts() {
 		trigger_execution_service: Arc::new(trigger_execution_service),
 		active_monitors_trigger_scripts: trigger_scripts,
 		client_pool,
+		slot: Some(slot),
 	})
 	.await;
 	assert!(

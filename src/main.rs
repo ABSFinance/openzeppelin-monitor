@@ -88,6 +88,7 @@ struct MonitorExecutionTestConfig {
 	pub active_monitors_trigger_scripts: HashMap<String, (ScriptLanguage, String)>,
 	pub raw_output: bool,
 	pub client_pool: Arc<ClientPool>,
+	pub slot: Option<u64>,
 }
 
 #[derive(Parser)]
@@ -132,6 +133,10 @@ struct Cli {
 	/// Block number to execute the monitor for
 	#[arg(long, value_name = "BLOCK_NUMBER")]
 	block: Option<u64>,
+
+	/// Slot to execute the monitor for
+	#[arg(long, value_name = "SLOT")]
+	slot: Option<u64>,
 
 	/// Validate configuration files without starting the service
 	#[arg(long)]
@@ -234,6 +239,7 @@ async fn main() -> Result<()> {
 	let monitor_path = cli.monitor_path.clone();
 	let network_slug = cli.network.clone();
 	let block_number = cli.block;
+	let slot = cli.slot;
 
 	let client_pool = Arc::new(ClientPool::new());
 
@@ -254,6 +260,7 @@ async fn main() -> Result<()> {
 			active_monitors_trigger_scripts,
 			raw_output: false,
 			client_pool,
+			slot,
 		})
 		.await;
 	}
@@ -478,6 +485,7 @@ async fn test_monitor_execution(config: MonitorExecutionTestConfig) -> Result<()
 		trigger_execution_service: config.trigger_execution_service.clone(),
 		active_monitors_trigger_scripts: config.active_monitors_trigger_scripts.clone(),
 		client_pool: config.client_pool.clone(),
+		slot: config.slot,
 	})
 	.await;
 
@@ -756,6 +764,7 @@ mod tests {
 
 		let path = "test_monitor.json".to_string();
 		let block_number = Some(12345);
+		let slot = Some(12345);
 		let client_pool = Arc::new(ClientPool::new());
 		// Execute test
 		let result = test_monitor_execution(MonitorExecutionTestConfig {
@@ -769,6 +778,7 @@ mod tests {
 			active_monitors_trigger_scripts: HashMap::new(),
 			raw_output: false,
 			client_pool: client_pool.clone(),
+			slot,
 		})
 		.await;
 
@@ -797,6 +807,7 @@ mod tests {
 		let path = "nonexistent_monitor.json".to_string();
 		let network_slug = Some("test_network".to_string());
 		let block_number = Some(12345);
+		let slot = Some(12345);
 
 		let client_pool = Arc::new(ClientPool::new());
 		// Execute test
@@ -811,6 +822,7 @@ mod tests {
 			active_monitors_trigger_scripts: HashMap::new(),
 			raw_output: false,
 			client_pool: client_pool.clone(),
+			slot,
 		})
 		.await;
 

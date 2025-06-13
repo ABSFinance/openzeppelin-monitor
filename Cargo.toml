@@ -97,6 +97,7 @@ proptest = "1.6.0"
 rand = "0.9.0"
 tempfile = "3.2"
 tracing-test = "0.2.5"
+carbon-test-utils = "0.8.1"
 
 [lib]
 path = "src/lib.rs"

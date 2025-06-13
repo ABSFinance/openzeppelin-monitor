@@ -40,8 +40,9 @@ pub use blockchain::solana::{
 // Re-export core types
 pub use core::{
 	AddressWithSpec, EventCondition, FunctionCondition, InstructionCondition, MatchConditions,
-	Monitor, Network, NotificationMessage, RpcUrl, ScriptLanguage, TransactionCondition,
-	TransactionStatus, Trigger, TriggerConditions, TriggerType, TriggerTypeConfig,
+	Monitor, Network, NotificationMessage, RpcUrl, ScriptLanguage, SolanaMatchConditions,
+	TransactionCondition, TransactionStatus, Trigger, TriggerConditions, TriggerType,
+	TriggerTypeConfig,
 };
 
 // Re-export config types

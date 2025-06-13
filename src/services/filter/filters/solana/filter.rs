@@ -1,5 +1,5 @@
 use crate::{
-	models::FunctionCondition,
+	models::{blockchain::solana::SolanaMatchParamsMap, FunctionCondition},
 	services::{
 		decoders::{Decoder, InstructionType},
 		filter::{
@@ -32,6 +32,7 @@ use carbon_kamino_lending_decoder::{
 	instructions::{init_lending_market, KaminoLendingInstruction},
 	KaminoLendingDecoder,
 };
+use tracing::instrument;
 
 pub struct SolanaBlockFilter<T> {
 	pub _client: PhantomData<T>,
@@ -46,6 +47,31 @@ impl<T> SolanaBlockFilter<T> {
 			helpers: SolanaFilterHelpers::new(),
 			decoder: Decoder::new(),
 		}
+	}
+
+	#[instrument(skip_all, fields(network = %network.slug))]
+	async fn filter_block(
+		&self,
+		client: &T,
+		network: &Network,
+		block: &BlockType,
+		monitors: &[Monitor],
+		contract_specs: Option<&[(String, ContractSpec)]>,
+	) -> Result<Vec<MonitorMatch>, FilterError> {
+		let svm_block = match block {
+			BlockType::Solana(block) => block,
+			_ => {
+				return Err(FilterError::block_type_mismatch(
+					"Expected EVM block",
+					None,
+					None,
+				))
+			}
+		};
+
+		tracing::debug!("Processing block {}", svm_block.slot);
+
+		Ok(Vec::new())
 	}
 
 	/// Evaluates a match expression against provided parameters (EVM-style)
@@ -72,13 +98,14 @@ impl<T> SolanaBlockFilter<T> {
 					return false;
 				};
 				match param.kind.as_str() {
-					"u8" | "u64" | "u128" | "u32" | "usize" => {
+					"u8" | "u64" | "u128" | "u32" | "usize" | "i64" => {
 						let Ok(param_value) = param.value.parse::<u64>() else {
 							return false;
 						};
 						let Ok(compare_value) = value.parse::<u64>() else {
 							return false;
 						};
+
 						match operator {
 							">" => param_value > compare_value,
 							">=" => param_value >= compare_value,
@@ -150,12 +177,12 @@ impl<T> SolanaBlockFilter<T> {
 		}
 	}
 
-	pub fn find_matching_functions_for_transaction(
+	pub fn find_matching_insturction_for_transaction(
 		&self,
 		contract_specs: &[(String, SolanaContractSpec)],
 		transaction: &SolanaTransaction,
 		monitor: &Monitor,
-		matched_functions: &mut Vec<FunctionCondition>,
+		matched_functions: &mut Vec<InstructionCondition>,
 		matched_on_args: &mut SolanaMatchArguments,
 	) {
 		if !monitor.match_conditions.functions.is_empty() {
@@ -173,6 +200,7 @@ impl<T> SolanaBlockFilter<T> {
 
 			for nested_instruction in nested_instructions.iter() {
 				// Find matching contract spec and decoder
+
 				if let Some((_, contract_spec)) = contract_specs.iter().find(|(address, _)| {
 					address == &nested_instruction.instruction.program_id.to_string()
 				}) {
@@ -191,21 +219,36 @@ impl<T> SolanaBlockFilter<T> {
 								if matches {
 									if let Some(expr) = &condition.expression {
 										// Create match parameters for the instruction
-										let tx_params =
-											self.extract_fields(&decoded_instruction.data);
+										let params = self.extract_fields(&decoded_instruction.data);
 
-										if self.evaluate_expression(expr, &Some(tx_params)) {
-											matched_functions.push(FunctionCondition {
+										if self.evaluate_expression(expr, &Some(params.clone())) {
+											matched_functions.push(InstructionCondition {
 												signature: condition.signature.clone(),
 												expression: Some(expr.to_string()),
 											});
+											if let Some(instructions) =
+												&mut matched_on_args.instructions
+											{
+												instructions.push(SolanaMatchParamsMap {
+													signature: condition.signature.clone(),
+													args: Some(params.clone()),
+												});
+											};
 											break;
 										}
 									} else {
-										matched_functions.push(FunctionCondition {
+										matched_functions.push(InstructionCondition {
 											signature: condition.signature.clone(),
 											expression: None,
 										});
+										if let Some(instructions) =
+											&mut matched_on_args.instructions
+										{
+											instructions.push(SolanaMatchParamsMap {
+												signature: condition.signature.clone(),
+												args: None,
+											});
+										}
 										break;
 									}
 								}
@@ -234,11 +277,37 @@ impl<T> SolanaBlockFilter<T> {
 			});
 		}
 
-		// Get all fields from the instruction data using serde
+		// Convert to JSON to get field names and values
 		let json = serde_json::to_value(data).unwrap();
+
+		// Extract the inner struct data
 		if let serde_json::Value::Object(map) = json {
-			for (key, value) in map {
-				add_field(&mut params, &key, &value);
+			for (_, value) in map {
+				if let serde_json::Value::Object(inner_map) = value {
+					for (_, value) in inner_map {
+						if let serde_json::Value::Object(inner_inner_map) = value {
+							for (key, value) in inner_inner_map {
+								match value {
+									serde_json::Value::Number(n) => {
+										// Try i64 first, then fall back to u64
+										if let Some(i) = n.as_i64() {
+											add_field(&mut params, &key, &i);
+										} else if let Some(u) = n.as_u64() {
+											add_field(&mut params, &key, &u);
+										}
+									}
+									serde_json::Value::Bool(b) => {
+										add_field(&mut params, &key, &b);
+									}
+									serde_json::Value::String(s) => {
+										add_field(&mut params, &key, &s);
+									}
+									_ => {}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -502,37 +571,32 @@ mod tests {
 			accounts: Some(Vec::new()),
 		};
 
-		// Create test instruction
-		let fee_payer = Keypair::new();
-		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
-		let instruction = Instruction {
-			program_id: Pubkey::from_str_const("DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"),
-			accounts: vec![
-				AccountMeta::new(
-					Pubkey::from_str_const("CfBLHEJkCUqn5LrST6ptAG96UrkjB5pfZFc98LUQUY3g"),
-					false,
-				),
-				AccountMeta::new(
-					Pubkey::from_str_const("ByBxpqTdJUQt5NpnJJp9GzovBmnT3hmMx1CqhtRAKaK1"),
-					true,
-				),
-			],
-			data: vec![1, 0, 0, 0, 0, 0, 0, 0], // OpenDca instruction data
-		};
+		// Read instruction from fixture
+		let instruction = carbon_test_utils::read_instruction("tests/fixtures/open_dca_ix.json")
+			.expect("read fixture");
 
-		let transaction = create_test_transaction();
+		// Create transaction with the instruction
+		let transaction = TransactionBuilder::new()
+			.slot(12345)
+			.signature(Signature::new_unique())
+			.message(VersionedMessage::Legacy(Message::new(
+				&[instruction.clone()],
+				None,
+			)))
+			.block_time(1678901234)
+			.build();
 
 		// Create contract spec
 		let contract_spec = SolanaContractSpec(InstructionType::JupiterDCA(
 			JupiterDcaInstruction::OpenDca(open_dca::OpenDca {
-				application_idx: 0,
-				in_amount: 0,
-				in_amount_per_cycle: 0,
-				cycle_frequency: 0,
-				min_out_amount: None,
-				max_out_amount: None,
-				start_at: None,
-				close_wsol_in_ata: None,
+				application_idx: 1739688565,
+				in_amount: 5000000,
+				in_amount_per_cycle: 100000,
+				cycle_frequency: 60,
+				min_out_amount: Some(0),
+				max_out_amount: Some(0),
+				start_at: Some(0),
+				close_wsol_in_ata: Some(false),
 			}),
 		));
 
@@ -558,7 +622,7 @@ mod tests {
 			.build();
 
 		// Test function matching
-		filter.find_matching_functions_for_transaction(
+		filter.find_matching_insturction_for_transaction(
 			&contract_specs,
 			&transaction,
 			&monitor,
