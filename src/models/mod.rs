@@ -32,9 +32,10 @@ pub use blockchain::stellar::{
 };
 
 pub use blockchain::solana::{
-	SolanaBlock, SolanaContractSpec, SolanaDecodedInstruction, SolanaInstructionDecoder,
-	SolanaInstructionMetadata, SolanaMonitorMatch, SolanaReward, SolanaTransaction,
-	SolanaTransactionMetadata, SolanaTransactionStatusMeta,
+	default_ui_transaction_status_meta, SolanaBlock, SolanaContractSpec, SolanaDecodedInstruction,
+	SolanaInstructionDecoder, SolanaInstructionMetadata, SolanaMonitorMatch, SolanaReward,
+	SolanaTransaction, SolanaTransactionMetadata, SolanaTransactionStatusMeta,
+	TransactionTokenBalance,
 };
 
 // Re-export core types

@@ -1,5 +1,5 @@
 use crate::{
-	models::{blockchain::solana::SolanaMatchParamsMap, FunctionCondition},
+	models::blockchain::solana::SolanaMatchParamsMap,
 	services::{
 		decoders::{Decoder, InstructionType},
 		filter::{
@@ -13,10 +13,11 @@ use {
 	crate::models::{
 		blockchain::solana::{
 			NestedInstructions, SolanaInstructionsWithMetadata, SolanaMatchArguments,
-			SolanaMatchParamEntry, SolanaTransaction, SolanaTransactionMetadata,
+			SolanaMatchParamEntry, SolanaMonitorMatch, SolanaTransaction,
+			SolanaTransactionMetadata,
 		},
 		BlockType, ContractSpec, InstructionCondition, Monitor, MonitorMatch, Network,
-		SolanaContractSpec, TransactionCondition, TransactionStatus,
+		SolanaContractSpec, SolanaMatchConditions, TransactionCondition, TransactionStatus,
 	},
 	std::marker::PhantomData,
 };
@@ -24,14 +25,8 @@ use {
 use async_trait::async_trait;
 
 // Add Carbon's instruction types
-use carbon_core::instruction::{DecodedInstruction, InstructionDecoder};
+use carbon_core::instruction::DecodedInstruction;
 
-use carbon_jupiter_dca_decoder::JupiterDcaDecoder;
-use carbon_kamino_farms_decoder::{instructions::KaminoFarmsInstruction, KaminoFarmsDecoder};
-use carbon_kamino_lending_decoder::{
-	instructions::{init_lending_market, KaminoLendingInstruction},
-	KaminoLendingDecoder,
-};
 use tracing::instrument;
 
 pub struct SolanaBlockFilter<T> {
@@ -47,31 +42,6 @@ impl<T> SolanaBlockFilter<T> {
 			helpers: SolanaFilterHelpers::new(),
 			decoder: Decoder::new(),
 		}
-	}
-
-	#[instrument(skip_all, fields(network = %network.slug))]
-	async fn filter_block(
-		&self,
-		client: &T,
-		network: &Network,
-		block: &BlockType,
-		monitors: &[Monitor],
-		contract_specs: Option<&[(String, ContractSpec)]>,
-	) -> Result<Vec<MonitorMatch>, FilterError> {
-		let svm_block = match block {
-			BlockType::Solana(block) => block,
-			_ => {
-				return Err(FilterError::block_type_mismatch(
-					"Expected EVM block",
-					None,
-					None,
-				))
-			}
-		};
-
-		tracing::debug!("Processing block {}", svm_block.slot);
-
-		Ok(Vec::new())
 	}
 
 	/// Evaluates a match expression against provided parameters (EVM-style)
@@ -332,16 +302,165 @@ impl<T> Default for SolanaBlockFilter<T> {
 impl<T: Send + Sync> BlockFilter for SolanaBlockFilter<T> {
 	type Client = T;
 
+	#[instrument(skip_all, fields(network = %network.slug))]
 	async fn filter_block(
 		&self,
 		_client: &Self::Client,
-		_network: &Network,
-		_block: &BlockType,
-		_monitors: &[Monitor],
-		_contract_specs: Option<&[(String, ContractSpec)]>,
+		network: &Network,
+		block: &BlockType,
+		monitors: &[Monitor],
+		contract_specs: Option<&[(String, ContractSpec)]>,
 	) -> Result<Vec<MonitorMatch>, FilterError> {
-		// TODO: Implement Solana-specific block filtering logic
-		Ok(Vec::new())
+		let solana_block = match block {
+			BlockType::Solana(block) => block,
+			_ => {
+				return Err(FilterError::block_type_mismatch(
+					"Expected Solana block",
+					None,
+					None,
+				))
+			}
+		};
+
+		tracing::debug!("Processing Solana block {}", solana_block.slot);
+
+		let mut matching_results = Vec::new();
+
+		// Cast contract specs to SolanaContractSpec
+		let contract_specs = contract_specs
+			.unwrap_or(&[])
+			.iter()
+			.filter_map(|(address, spec)| match spec {
+				ContractSpec::Solana(spec) => Some((address.clone(), spec.clone())),
+				_ => None,
+			})
+			.collect::<Vec<(String, SolanaContractSpec)>>();
+
+		for monitor in monitors {
+			tracing::debug!("Processing monitor: {:?}", monitor.name);
+			let monitored_addresses: Vec<String> = monitor
+				.addresses
+				.iter()
+				.map(|a| a.address.clone())
+				.collect();
+
+			// Process all transactions in the block
+			for transaction in &solana_block.transactions {
+				// Reset matched_on_args for each transaction
+				let mut matched_on_args = SolanaMatchArguments {
+					instructions: Some(Vec::new()),
+					accounts: Some(Vec::new()),
+				};
+
+				let mut matched_instructions = Vec::<InstructionCondition>::new();
+				let mut matched_transactions = Vec::<TransactionCondition>::new();
+
+				// Check transaction match conditions
+				self.find_matching_transaction(transaction, monitor, &mut matched_transactions);
+
+				// Check instruction match conditions
+				self.find_matching_insturction_for_transaction(
+					&contract_specs,
+					transaction,
+					monitor,
+					&mut matched_instructions,
+					&mut matched_on_args,
+				);
+
+				// Check if any monitored addresses are involved in this transaction
+				let mut involved_addresses = Vec::new();
+
+				// Add transaction accounts to involved addresses
+				match transaction.message() {
+					solana_sdk::message::VersionedMessage::Legacy(msg) => {
+						for account_key in &msg.account_keys {
+							involved_addresses.push(account_key.to_string());
+						}
+					}
+					solana_sdk::message::VersionedMessage::V0(msg) => {
+						for account_key in &msg.account_keys {
+							involved_addresses.push(account_key.to_string());
+						}
+					}
+				}
+
+				// Remove duplicates
+				involved_addresses.sort_unstable();
+				involved_addresses.dedup();
+
+				let has_address_match = monitored_addresses
+					.iter()
+					.any(|addr| involved_addresses.contains(addr));
+
+				// Only proceed if we have a matching address
+				if has_address_match {
+					let monitor_conditions = &monitor.match_conditions;
+					let has_instruction_match = !monitor_conditions.functions.is_empty()
+						&& !matched_instructions.is_empty();
+					let has_transaction_match = !monitor_conditions.transactions.is_empty()
+						&& !matched_transactions.is_empty();
+
+					let should_match: bool = match (
+						monitor_conditions.functions.is_empty(),
+						monitor_conditions.transactions.is_empty(),
+					) {
+						// Case 1: No conditions defined, match everything
+						(true, true) => true,
+
+						// Case 2: Only transaction conditions defined
+						(true, false) => has_transaction_match,
+
+						// Case 3: Only instruction conditions defined
+						(false, true) => has_instruction_match,
+
+						// Case 4: Both conditions exist, they must be satisfied together
+						(false, false) => has_instruction_match && has_transaction_match,
+					};
+
+					if should_match {
+						matching_results.push(MonitorMatch::Solana(Box::new(SolanaMonitorMatch {
+							monitor: Monitor {
+								// Omit contract spec from monitor since we do not need it here
+								addresses: monitor
+									.addresses
+									.iter()
+									.map(|addr| crate::models::AddressWithSpec {
+										contract_spec: None,
+										..addr.clone()
+									})
+									.collect(),
+								..monitor.clone()
+							},
+							transaction: transaction.clone(),
+							network_slug: network.slug.clone(),
+							matched_on: SolanaMatchConditions {
+								instructions: matched_instructions
+									.clone()
+									.into_iter()
+									.filter(|_| has_instruction_match)
+									.collect(),
+								accounts: vec![], // TODO: Implement account matching if needed
+								transactions: matched_transactions
+									.clone()
+									.into_iter()
+									.filter(|_| has_transaction_match)
+									.collect(),
+							},
+							matched_on_args: Some(SolanaMatchArguments {
+								instructions: if has_instruction_match {
+									matched_on_args.instructions.clone()
+								} else {
+									None
+								},
+								accounts: matched_on_args.accounts.clone(),
+							}),
+						})));
+					}
+				}
+			}
+		}
+
+		Ok(matching_results)
 	}
 }
 
@@ -359,10 +478,7 @@ mod tests {
 	use solana_sdk::pubkey::Pubkey;
 	use solana_sdk::{instruction::Instruction, message::VersionedMessage};
 
-	use solana_sdk::{
-		message::Message, signature::Keypair, signer::Signer, system_instruction,
-		transaction::Transaction,
-	};
+	use solana_sdk::{message::Message, signature::Keypair, signer::Signer};
 	use solana_signature::Signature;
 
 	fn create_test_filter() -> SolanaBlockFilter<()> {
@@ -515,7 +631,6 @@ mod tests {
 
 		let transaction = create_test_transaction();
 
-		let different_pubkey = Keypair::new().pubkey();
 		let monitor = create_test_monitor(
 			vec![],
 			vec![],
@@ -535,13 +650,6 @@ mod tests {
 	fn test_find_matching_transaction_with_system_transfer() {
 		let filter = create_test_filter();
 		let mut matched = Vec::new();
-
-		let fee_payer = Keypair::new();
-		let recipient = Keypair::new();
-		let recent_blockhash = solana_sdk::hash::Hash::new_unique();
-
-		let transfer_instruction =
-			system_instruction::transfer(&fee_payer.pubkey(), &recipient.pubkey(), 1000);
 
 		let transaction = create_test_transaction();
 

@@ -1,0 +1,22 @@
+{
+  "name": "Solana Jupiter DCA Monitor",
+  "paused": false,
+  "networks": ["solana_mainnet"],
+  "addresses": [
+    {
+      "address": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
+    }
+  ],
+  "match_conditions": {
+    "functions": [
+      {
+        "signature": "OpenDca()",
+        "expression": "in_amount > 1000000"
+      }
+    ],
+    "events": [],
+    "transactions": []
+  },
+  "trigger_conditions": [],
+  "triggers": []
+}

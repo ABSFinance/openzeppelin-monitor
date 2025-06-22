@@ -270,7 +270,7 @@ pub async fn execute_monitor<
 					.await
 					.map_err(|e| {
 						MonitorExecutionError::execution_error(
-							format!("Failed to get EVM client: {}", e),
+							format!("Failed to get SOLANA client: {}", e),
 							None,
 							None,
 						)
@@ -278,23 +278,53 @@ pub async fn execute_monitor<
 
 				let slot = match config.slot {
 					Some(slot) => {
-						tracing::debug!(block = %slot, "Using specified block number");
+						tracing::debug!(block = %slot, "Using specified slot number");
 						slot
 					}
 					None => {
 						let latest = client.get_latest_block_number().await.map_err(|e| {
 							MonitorExecutionError::execution_error(e.to_string(), None, None)
 						})?;
-						tracing::debug!(block = %latest, "Using latest block number");
+						tracing::debug!(block = %latest, "Using latest slot number");
 						latest
 					}
 				};
 
-				return Err(MonitorExecutionError::execution_error(
-					"Solana network not supported",
-					None,
-					None,
-				));
+				tracing::debug!(slot = %slot, "Fetching block");
+				let blocks = client.get_blocks(slot, None).await.map_err(|e| {
+					MonitorExecutionError::execution_error(
+						format!("Failed to get block {}: {}", slot, e),
+						None,
+						None,
+					)
+				})?;
+
+				let block = blocks.first().ok_or_else(|| {
+					MonitorExecutionError::not_found(
+						format!("Block {} not found", slot),
+						None,
+						None,
+					)
+				})?;
+
+				tracing::debug!(slot = %slot, "Filtering block");
+				config
+					.filter_service
+					.filter_block(
+						&*client,
+						&network,
+						block,
+						&[monitor.clone()],
+						Some(&contract_specs),
+					)
+					.await
+					.map_err(|e| {
+						MonitorExecutionError::execution_error(
+							format!("Failed to filter block: {}", e),
+							None,
+							None,
+						)
+					})?
 			}
 		};
 

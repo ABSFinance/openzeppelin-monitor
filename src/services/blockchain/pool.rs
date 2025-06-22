@@ -86,7 +86,7 @@ impl ClientPool {
 		// Register client types
 		pool.register_client_type::<EvmClient<EVMTransportClient>>(BlockChainType::EVM);
 		pool.register_client_type::<StellarClient<StellarTransportClient>>(BlockChainType::Stellar);
-		// pool.register_client_type::<SolanaClient<SolanaTransportClient>>(BlockChainType::Solana);
+		pool.register_client_type::<SolanaClient<SolanaTransportClient>>(BlockChainType::Solana);
 
 		pool
 	}

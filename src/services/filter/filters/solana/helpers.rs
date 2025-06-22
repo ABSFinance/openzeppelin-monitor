@@ -1,11 +1,10 @@
 use {
 	crate::{
 		models::{SolanaInstructionMetadata, SolanaTransaction, SolanaTransactionMetadata},
-		services::{decoders::InstructionType, filter::error::FilterError},
+		services::decoders::InstructionType,
 	},
 	agave_reserved_account_keys::ReservedAccountKeys,
 	carbon_core::{error::CarbonResult, instruction::DecodedInstruction},
-	carbon_kamino_lending_decoder::instructions::KaminoLendingInstruction,
 	solana_instruction::AccountMeta,
 	solana_pubkey::Pubkey,
 	solana_sdk::{
@@ -120,7 +119,7 @@ impl SolanaFilterHelpers {
 						},
 					));
 
-					if let Some(inner_instructions) = &meta.inner_instructions {
+					if let Some(inner_instructions) = &meta.inner_instructions.iter() {
 						for inner_instructions_per_tx in inner_instructions {
 							if inner_instructions_per_tx.index == i as u8 {
 								for inner_instruction in
@@ -175,8 +174,20 @@ impl SolanaFilterHelpers {
 			}
 			VersionedMessage::V0(v0) => {
 				let loaded_addresses = LoadedAddresses {
-					writable: meta.loaded_addresses.writable.to_vec(),
-					readonly: meta.loaded_addresses.readonly.to_vec(),
+					writable: meta
+						.loaded_addresses
+						.unwrap()
+						.writable
+						.iter()
+						.map(|s| s.parse::<Pubkey>().unwrap())
+						.collect(),
+					readonly: meta
+						.loaded_addresses
+						.unwrap()
+						.readonly
+						.iter()
+						.map(|s| s.parse::<Pubkey>().unwrap())
+						.collect(),
 				};
 
 				let loaded_message = LoadedMessage::new(

@@ -94,6 +94,38 @@ pub fn create_http_valid_server_mock_network_response(server: &mut Server) -> Mo
 		.create()
 }
 
+pub fn create_solana_test_network_with_urls(urls: Vec<&str>) -> Network {
+	NetworkBuilder::new()
+		.name("test")
+		.slug("test")
+		.network_type(BlockChainType::Solana)
+		.cron_schedule("*/5 * * * * *")
+		.confirmation_blocks(1)
+		.store_blocks(false)
+		.block_time_ms(400)
+		.rpc_urls(urls)
+		.build()
+}
+
+pub fn create_solana_valid_server_mock_network_response(server: &mut Server) -> Mock {
+	server
+		.mock("POST", "/")
+		.match_body(
+			r#"{"id":0,"jsonrpc":"2.0","method":"getSlot","params":[{"commitment":"finalized"}]}"#,
+		)
+		.with_header("content-type", "application/json")
+		.with_status(200)
+		.with_body(
+			json!({
+				"jsonrpc": "2.0",
+				"result": 12345,
+				"id": 0
+			})
+			.to_string(),
+		)
+		.create()
+}
+
 pub fn create_test_block(chain: BlockChainType, block_number: u64) -> BlockType {
 	match chain {
 		BlockChainType::EVM => BlockType::EVM(Box::new(EVMBlock::from(alloy::rpc::types::Block {
