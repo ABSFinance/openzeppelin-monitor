@@ -1,7 +1,7 @@
 use crate::models::{
-	SolanaDecodedInstruction, SolanaTransaction, SolanaTransactionMetadata,
-	SolanaTransactionStatusMeta,
+	default_ui_transaction_status_meta, SolanaDecodedInstruction, SolanaTransaction,
 };
+use agave_reserved_account_keys::ReservedAccountKeys;
 use solana_instruction;
 use solana_sdk::{
 	message::{v0::LoadedMessage, Message, VersionedMessage},
@@ -79,20 +79,11 @@ impl TransactionBuilder {
 
 	/// Builds the SolanaTransaction
 	pub fn build(self) -> SolanaTransaction {
-		let metadata = SolanaTransactionMetadata {
-			slot: self.slot.unwrap_or(0),
-			signature: self.signature.unwrap_or_else(Signature::new_unique),
-			fee_payer: self.fee_payer.unwrap_or_else(Pubkey::new_unique),
-			meta: self.meta.unwrap_or_default(),
-			message: self.message.unwrap_or_else(|| {
-				VersionedMessage::Legacy(Message::new(&[], Some(&Pubkey::new_unique())))
-			}),
-			block_time: self.block_time,
-		};
-
 		SolanaTransaction {
-			signature: metadata.signature,
-			transaction: match metadata.message {
+			signature: self.signature.unwrap_or_else(Signature::new_unique),
+			transaction: match self.message.unwrap_or_else(|| {
+				VersionedMessage::Legacy(Message::new(&[], Some(&Pubkey::new_unique())))
+			}) {
 				VersionedMessage::Legacy(msg) => {
 					solana_sdk::transaction::VersionedTransaction::from(
 						solana_sdk::transaction::Transaction::new_unsigned(msg),
@@ -102,7 +93,7 @@ impl TransactionBuilder {
 					let loaded_msg = LoadedMessage::new(
 						msg.clone(),
 						solana_sdk::message::v0::LoadedAddresses::default(),
-						&solana_sdk::reserved_account_keys::ReservedAccountKeys::empty_key_set(),
+						&ReservedAccountKeys::empty_key_set(),
 					);
 					let instructions: Vec<_> = msg
 						.instructions
@@ -129,9 +120,9 @@ impl TransactionBuilder {
 					)
 				}
 			},
-			meta: metadata.meta,
-			slot: metadata.slot,
-			block_time: metadata.block_time,
+			meta: default_ui_transaction_status_meta(),
+			slot: self.slot.unwrap_or(0),
+			block_time: self.block_time,
 		}
 	}
 }
