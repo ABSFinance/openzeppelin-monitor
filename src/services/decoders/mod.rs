@@ -5,7 +5,6 @@
 
 use {
 	carbon_core::{
-		deserialize::CarbonDeserialize,
 		instruction::{DecodedInstruction, InstructionDecoder},
 		try_decode_instructions,
 	},
@@ -63,7 +62,7 @@ impl Serialize for KaminoLendingAccountWrapper<'_> {
 }
 
 impl<'de> Deserialize<'de> for KaminoLendingAccountWrapper<'_> {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
@@ -215,12 +214,18 @@ impl Decoder {
 	}
 }
 
+impl Default for Decoder {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 /// Helper function to create match parameters for an instruction
 pub fn create_match_params(
 	program_id: &Pubkey,
 	instruction: &InstructionType,
 ) -> Vec<crate::models::blockchain::solana::SolanaMatchParamEntry> {
-	let mut params = vec![crate::models::blockchain::solana::SolanaMatchParamEntry {
+	let params = vec![crate::models::blockchain::solana::SolanaMatchParamEntry {
 		name: "program_id".to_string(),
 		value: program_id.to_string(),
 		kind: "pubkey".to_string(),
@@ -228,29 +233,24 @@ pub fn create_match_params(
 	}];
 
 	// Add instruction-specific parameters
-	match instruction {
-		InstructionType::KaminoLendingInstruction(ix) => {
-			match ix {
-				KaminoLendingInstruction::InitLendingMarket(data) => {
-					// Add InitLendingMarket specific parameters
-				}
-				KaminoLendingInstruction::UpdateLendingMarket(data) => {
-					// Add UpdateLendingMarket specific parameters
-				}
-				_ => {}
+	if let InstructionType::KaminoLendingInstruction(ix) = instruction {
+		match ix {
+			KaminoLendingInstruction::InitLendingMarket(_data) => {
+				// Add InitLendingMarket specific parameters
 			}
+			KaminoLendingInstruction::UpdateLendingMarket(_data) => {
+				// Add UpdateLendingMarket specific parameters
+			}
+			_ => {}
 		}
-		// Add other instruction type parameters
-		_ => {}
 	}
+	// Add other instruction type parameters
 
 	params
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use solana_sdk::instruction::Instruction;
 
 	#[test]
 	fn test_matches_instruction_type() {

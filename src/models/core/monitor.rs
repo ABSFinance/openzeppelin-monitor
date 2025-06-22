@@ -92,7 +92,6 @@ pub struct InstructionCondition {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-
 pub struct AccountCondition {
 	/// Event signature (e.g., "Transfer(address,address,uint256)")
 	pub signature: String,

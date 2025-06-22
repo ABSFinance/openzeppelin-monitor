@@ -98,11 +98,23 @@ impl SolanaMonitorMatch {
 		self.transaction.signature()
 	}
 
-	/// Returns the program ID
+	/// Returns the program ID of the matched instruction
 	pub fn program_id(&self) -> &Pubkey {
 		match self.transaction.message() {
-			VersionedMessage::Legacy(msg) => &msg.account_keys[0],
-			VersionedMessage::V0(msg) => &msg.account_keys[0],
+			VersionedMessage::Legacy(msg) => {
+				if !msg.instructions.is_empty() {
+					&msg.account_keys[msg.instructions[0].program_id_index as usize]
+				} else {
+					panic!("No instructions in transaction message; cannot get program_id");
+				}
+			}
+			VersionedMessage::V0(msg) => {
+				if !msg.instructions.is_empty() {
+					&msg.account_keys[msg.instructions[0].program_id_index as usize]
+				} else {
+					panic!("No instructions in transaction message; cannot get program_id");
+				}
+			}
 		}
 	}
 
@@ -173,19 +185,10 @@ impl SolanaMonitorMatch {
 	}
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct DecoderType {
 	pub account: Option<AccountType>,
 	pub instruction: Option<InstructionType>,
-}
-
-impl<'a> Default for DecoderType {
-	fn default() -> Self {
-		Self {
-			account: None,
-			instruction: None,
-		}
-	}
 }
 
 /// Contract specification for a Solana program
@@ -221,6 +224,7 @@ mod tests {
 		transaction::VersionedTransaction,
 	};
 	use solana_transaction_status::{option_serializer, UiTransactionStatusMeta};
+
 	use std::str::FromStr;
 
 	// Helper function to create a test monitor
@@ -235,7 +239,7 @@ mod tests {
 
 	// Helper function to create a test Kamino Lend instruction
 	fn create_kamino_lend_instruction() -> Instruction {
-		let instruction = InstructionBuilder::new()
+		InstructionBuilder::new()
 			.program_id(Pubkey::from_str("11111111111111111111111111111111").unwrap())
 			.account(AccountMeta::new(Pubkey::new_unique(), false)) // user
 			.account(AccountMeta::new(Pubkey::new_unique(), true))  // lending market
@@ -249,8 +253,7 @@ mod tests {
 				0x01, // instruction discriminator for deposit
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // amount (u64)
 			])
-			.build();
-		instruction
+			.build()
 	}
 
 	#[test]
@@ -258,10 +261,11 @@ mod tests {
 		let monitor = create_test_monitor();
 		let instruction = create_kamino_lend_instruction();
 		let metadata = InstructionMetadataBuilder::new().build();
+		let fee_payer = Pubkey::new_unique();
 		let transaction = TransactionBuilder::new()
 			.slot(metadata.transaction_metadata.slot)
 			.signature(metadata.transaction_metadata.signature)
-			.fee_payer(metadata.transaction_metadata.fee_payer)
+			.fee_payer(fee_payer)
 			.block_time(metadata.transaction_metadata.block_time.unwrap_or(0))
 			.instruction(SolanaDecodedInstruction {
 				program_id: instruction.program_id,
@@ -288,11 +292,14 @@ mod tests {
 			monitor_match.signature(),
 			&metadata.transaction_metadata.signature
 		);
-		assert_eq!(monitor_match.program_id(), &instruction.program_id);
+		let actual_program_id = monitor_match.program_id();
+		let expected_program_id = &instruction.program_id;
+
 		assert_eq!(monitor_match.data(), &instruction.data);
 		assert_eq!(monitor_match.instruction_index(), 0);
 		assert_eq!(monitor_match.stack_height(), 0);
 		assert_eq!(monitor_match.network_slug, "solana_mainnet");
+		assert_eq!(actual_program_id, expected_program_id);
 		assert_eq!(
 			monitor_match.matched_on,
 			SolanaMatchConditions {

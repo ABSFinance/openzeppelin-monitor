@@ -1,5 +1,8 @@
 use crate::{
-	models::blockchain::solana::SolanaMatchParamsMap,
+	models::{
+		BlockType, ContractSpec, InstructionCondition, Monitor, MonitorMatch, Network,
+		SolanaContractSpec, SolanaMatchConditions, TransactionCondition, TransactionStatus,
+	},
 	services::{
 		decoders::{Decoder, InstructionType},
 		filter::{
@@ -10,14 +13,10 @@ use crate::{
 };
 
 use {
-	crate::models::{
-		blockchain::solana::{
-			NestedInstructions, SolanaInstructionsWithMetadata, SolanaMatchArguments,
-			SolanaMatchParamEntry, SolanaMonitorMatch, SolanaTransaction,
-			SolanaTransactionMetadata,
-		},
-		BlockType, ContractSpec, InstructionCondition, Monitor, MonitorMatch, Network,
-		SolanaContractSpec, SolanaMatchConditions, TransactionCondition, TransactionStatus,
+	crate::models::blockchain::solana::{
+		NestedInstructions, SolanaInstructionsWithMetadata, SolanaMatchArguments,
+		SolanaMatchParamEntry, SolanaMatchParamsMap, SolanaMonitorMatch, SolanaTransaction,
+		SolanaTransactionMetadata,
 	},
 	std::marker::PhantomData,
 };
@@ -69,11 +68,15 @@ impl<T> SolanaBlockFilter<T> {
 				};
 				match param.kind.as_str() {
 					"u8" | "u64" | "u128" | "u32" | "usize" | "i64" => {
-						let Ok(param_value) = param.value.parse::<u64>() else {
-							return false;
+						let param_value = if param.kind == "i64" {
+							param.value.parse::<i64>().unwrap_or(0) as u64
+						} else {
+							param.value.parse::<u64>().unwrap_or(0)
 						};
-						let Ok(compare_value) = value.parse::<u64>() else {
-							return false;
+						let compare_value = if value.starts_with('-') {
+							value.parse::<i64>().unwrap_or(0) as u64
+						} else {
+							value.parse::<u64>().unwrap_or(0)
 						};
 
 						match operator {
@@ -122,12 +125,26 @@ impl<T> SolanaBlockFilter<T> {
 				let status_matches = true;
 				if status_matches {
 					if let Some(expr) = &condition.expression {
-						let tx_params = vec![SolanaMatchParamEntry {
-							name: "signature".to_string(),
-							value: transaction.signature.to_string(),
-							kind: "string".to_string(),
-							indexed: false,
-						}];
+						let tx_params = vec![
+							SolanaMatchParamEntry {
+								name: "signature".to_string(),
+								value: transaction.signature.to_string(),
+								kind: "string".to_string(),
+								indexed: false,
+							},
+							SolanaMatchParamEntry {
+								name: "block_time".to_string(),
+								value: transaction.block_time.unwrap_or(0).to_string(),
+								kind: "i64".to_string(),
+								indexed: false,
+							},
+							SolanaMatchParamEntry {
+								name: "slot".to_string(),
+								value: transaction.slot.to_string(),
+								kind: "u64".to_string(),
+								indexed: false,
+							},
+						];
 						if self.evaluate_expression(expr, &Some(tx_params)) {
 							matched_transactions.push(TransactionCondition {
 								expression: Some(expr.to_string()),
@@ -147,7 +164,7 @@ impl<T> SolanaBlockFilter<T> {
 		}
 	}
 
-	pub fn find_matching_insturction_for_transaction(
+	pub fn find_matching_instruction_for_transaction(
 		&self,
 		contract_specs: &[(String, SolanaContractSpec)],
 		transaction: &SolanaTransaction,
@@ -162,7 +179,7 @@ impl<T> SolanaBlockFilter<T> {
 			let instructions_with_metadata: SolanaInstructionsWithMetadata =
 				SolanaFilterHelpers::extract_instructions_with_metadata(
 					transaction_metadata,
-					&transaction,
+					transaction,
 				)
 				.unwrap();
 
@@ -359,7 +376,7 @@ impl<T: Send + Sync> BlockFilter for SolanaBlockFilter<T> {
 				self.find_matching_transaction(transaction, monitor, &mut matched_transactions);
 
 				// Check instruction match conditions
-				self.find_matching_insturction_for_transaction(
+				self.find_matching_instruction_for_transaction(
 					&contract_specs,
 					transaction,
 					monitor,
@@ -468,7 +485,10 @@ impl<T: Send + Sync> BlockFilter for SolanaBlockFilter<T> {
 mod tests {
 	use super::*;
 	use crate::{
-		models::{AddressWithSpec, EventCondition, FunctionCondition, MatchConditions},
+		models::{
+			AddressWithSpec, EventCondition, FunctionCondition, MatchConditions,
+			SolanaDecodedInstruction,
+		},
 		utils::tests::{
 			builders::solana::monitor::MonitorBuilder, solana::transaction::TransactionBuilder,
 		},
@@ -560,7 +580,7 @@ mod tests {
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("in_amount > 0")),
+				expression: Some("block_time > 0".to_string()),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -569,7 +589,7 @@ mod tests {
 		filter.find_matching_transaction(&transaction, &monitor, &mut matched);
 
 		assert_eq!(matched.len(), 1);
-		assert_eq!(matched[0].expression, Some(format!("in_amount > 0")));
+		assert_eq!(matched[0].expression, Some("block_time > 0".to_string()));
 		assert_eq!(matched[0].status, TransactionStatus::Any);
 	}
 
@@ -584,7 +604,7 @@ mod tests {
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("block_time > 0")),
+				expression: Some("block_time > 0".to_string()),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -593,7 +613,7 @@ mod tests {
 		filter.find_matching_transaction(&transaction, &monitor, &mut matched);
 
 		assert_eq!(matched.len(), 1);
-		assert_eq!(matched[0].expression, Some(format!("block_time > 0")));
+		assert_eq!(matched[0].expression, Some("block_time > 0".to_string()));
 		assert_eq!(matched[0].status, TransactionStatus::Any);
 	}
 
@@ -608,7 +628,7 @@ mod tests {
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("block_time > 0 AND in_amount > 0")),
+				expression: Some("block_time > 0 AND slot > 0".to_string()),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -619,7 +639,7 @@ mod tests {
 		assert_eq!(matched.len(), 1);
 		assert_eq!(
 			matched[0].expression,
-			Some(format!("block_time > 0 AND in_amount > 0"))
+			Some("block_time > 0 AND slot > 0".to_string())
 		);
 		assert_eq!(matched[0].status, TransactionStatus::Any);
 	}
@@ -635,7 +655,7 @@ mod tests {
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("block_time > 0")),
+				expression: Some("block_time < 0".to_string()),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -657,7 +677,7 @@ mod tests {
 			vec![],
 			vec![],
 			vec![TransactionCondition {
-				expression: Some(format!("block_time > 0")),
+				expression: Some("block_time > 0".to_string()),
 				status: TransactionStatus::Any,
 			}],
 			vec![],
@@ -666,7 +686,7 @@ mod tests {
 		filter.find_matching_transaction(&transaction, &monitor, &mut matched);
 
 		assert_eq!(matched.len(), 1);
-		assert_eq!(matched[0].expression, Some(format!("block_time > 0")));
+		assert_eq!(matched[0].expression, Some("block_time > 0".to_string()));
 		assert_eq!(matched[0].status, TransactionStatus::Any);
 	}
 
@@ -687,10 +707,11 @@ mod tests {
 		let transaction = TransactionBuilder::new()
 			.slot(12345)
 			.signature(Signature::new_unique())
-			.message(VersionedMessage::Legacy(Message::new(
-				&[instruction.clone()],
-				None,
-			)))
+			.instruction(SolanaDecodedInstruction {
+				program_id: instruction.program_id,
+				accounts: instruction.accounts,
+				data: instruction.data,
+			})
 			.block_time(1678901234)
 			.build();
 
@@ -730,7 +751,7 @@ mod tests {
 			.build();
 
 		// Test function matching
-		filter.find_matching_insturction_for_transaction(
+		filter.find_matching_instruction_for_transaction(
 			&contract_specs,
 			&transaction,
 			&monitor,

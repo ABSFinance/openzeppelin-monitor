@@ -54,6 +54,12 @@ impl InstructionBuilder {
 	}
 }
 
+impl Default for InstructionBuilder {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 /// Builder for creating test instruction metadata
 pub struct InstructionMetadataBuilder {
 	slot: u64,
@@ -166,5 +172,11 @@ impl InstructionMetadataBuilder {
 			stack_height: self.stack_height as u32,
 			index: self.instruction_index as u32,
 		}
+	}
+}
+
+impl Default for InstructionMetadataBuilder {
+	fn default() -> Self {
+		Self::new()
 	}
 }

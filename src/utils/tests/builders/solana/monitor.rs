@@ -133,3 +133,9 @@ impl MonitorBuilder {
 		}
 	}
 }
+
+impl Default for MonitorBuilder {
+	fn default() -> Self {
+		Self::new()
+	}
+}

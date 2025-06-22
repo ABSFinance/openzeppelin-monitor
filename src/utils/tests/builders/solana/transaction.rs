@@ -1,10 +1,9 @@
 use crate::models::{
 	default_ui_transaction_status_meta, SolanaDecodedInstruction, SolanaTransaction,
 };
-use agave_reserved_account_keys::ReservedAccountKeys;
 use solana_instruction;
 use solana_sdk::{
-	message::{v0::LoadedMessage, Message, VersionedMessage},
+	message::{Message, VersionedMessage},
 	pubkey::Pubkey,
 	signature::Signature,
 };
@@ -79,50 +78,62 @@ impl TransactionBuilder {
 
 	/// Builds the SolanaTransaction
 	pub fn build(self) -> SolanaTransaction {
+		let fee_payer = self.fee_payer.unwrap_or_else(Pubkey::new_unique);
+
+		// Create instructions from SolanaDecodedInstruction
+		let instructions: Vec<solana_instruction::Instruction> = self
+			.instructions
+			.iter()
+			.map(|decoded_ix| solana_instruction::Instruction {
+				program_id: decoded_ix.program_id,
+				accounts: decoded_ix.accounts.clone(),
+				data: decoded_ix.data.clone(),
+			})
+			.collect();
+
+		// --- FIX: Ensure account_keys order: fee_payer, program_id, then other accounts ---
+		let mut account_keys = vec![fee_payer];
+		if !instructions.is_empty() {
+			let program_id = instructions[0].program_id;
+			if !account_keys.contains(&program_id) {
+				account_keys.push(program_id);
+			}
+			for account in &instructions[0].accounts {
+				if !account_keys.contains(&account.pubkey) {
+					account_keys.push(account.pubkey);
+				}
+			}
+			// Add any additional program_ids/accounts from other instructions
+			for instruction in &instructions[1..] {
+				if !account_keys.contains(&instruction.program_id) {
+					account_keys.push(instruction.program_id);
+				}
+				for account in &instruction.accounts {
+					if !account_keys.contains(&account.pubkey) {
+						account_keys.push(account.pubkey);
+					}
+				}
+			}
+		} else {
+			// No instructions, just fee payer
+		}
+
+		let message = Message::new(&instructions, Some(&fee_payer));
+
 		SolanaTransaction {
 			signature: self.signature.unwrap_or_else(Signature::new_unique),
-			transaction: match self.message.unwrap_or_else(|| {
-				VersionedMessage::Legacy(Message::new(&[], Some(&Pubkey::new_unique())))
-			}) {
-				VersionedMessage::Legacy(msg) => {
-					solana_sdk::transaction::VersionedTransaction::from(
-						solana_sdk::transaction::Transaction::new_unsigned(msg),
-					)
-				}
-				VersionedMessage::V0(msg) => {
-					let loaded_msg = LoadedMessage::new(
-						msg.clone(),
-						solana_sdk::message::v0::LoadedAddresses::default(),
-						&ReservedAccountKeys::empty_key_set(),
-					);
-					let instructions: Vec<_> = msg
-						.instructions
-						.iter()
-						.map(|ix| solana_instruction::Instruction {
-							program_id: loaded_msg.account_keys()[ix.program_id_index as usize],
-							accounts: ix
-								.accounts
-								.iter()
-								.map(|&idx| solana_instruction::AccountMeta {
-									pubkey: loaded_msg.account_keys()[idx as usize],
-									is_signer: loaded_msg.is_signer(idx as usize),
-									is_writable: loaded_msg.is_writable(idx as usize),
-								})
-								.collect(),
-							data: ix.data.clone(),
-						})
-						.collect();
-					solana_sdk::transaction::VersionedTransaction::from(
-						solana_sdk::transaction::Transaction::new_unsigned(Message::new(
-							&instructions,
-							Some(&loaded_msg.account_keys()[0]),
-						)),
-					)
-				}
-			},
-			meta: default_ui_transaction_status_meta(),
+			transaction: solana_sdk::transaction::VersionedTransaction::from(
+				solana_sdk::transaction::Transaction::new_unsigned(message),
+			),
+			meta: self.meta.unwrap_or_else(default_ui_transaction_status_meta),
 			slot: self.slot.unwrap_or(0),
 			block_time: self.block_time,
 		}
+	}
+}
+
+impl Default for TransactionBuilder {
+	fn default() -> Self {
+		Self::new()
 	}
 }

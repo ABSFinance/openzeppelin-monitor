@@ -147,16 +147,16 @@ pub fn create_test_block(chain: BlockChainType, block_number: u64) -> BlockType 
 				..Default::default()
 			})))
 		}
-		BlockChainType::Solana => BlockType::Solana(Box::new(SolanaBlock::new(
-			block_number,
-			"test_hash".to_string(),
-			block_number - 1,
-			Some(1678901234),
-			Some(block_number),
-			vec![],
-			None,
-			solana_sdk::commitment_config::CommitmentConfig::confirmed(),
-		))),
+		BlockChainType::Solana => BlockType::Solana(Box::new(SolanaBlock {
+			slot: 100,
+			blockhash: "test_blockhash".to_string(),
+			parent_slot: 99,
+			block_time: Some(1678901234),
+			block_height: Some(100),
+			transactions: vec![],
+			rewards: None,
+			commitment: solana_sdk::commitment_config::CommitmentConfig::confirmed(),
+		})),
 		_ => panic!("Unsupported chain"),
 	}
 }
