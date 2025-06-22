@@ -1953,6 +1953,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "carbon-jupiter-dca-decoder"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55cf10f56c913f55b9f5cc60b3eb2dda058083f1bb08d071a61c8432f1b05d2b"
+dependencies = [
+ "carbon-core",
+ "serde",
+ "solana-account",
+ "solana-instruction",
+ "solana-pubkey",
+]
+
+[[package]]
+name = "carbon-kamino-farms-decoder"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2f07d6509dd48ca52b2c0ebb3f7b420208169ca340928cd15fc980a2298061a"
+dependencies = [
+ "carbon-core",
+ "carbon-macros",
+ "carbon-proc-macros",
+ "serde",
+ "solana-account",
+ "solana-instruction",
+ "solana-pubkey",
+]
+
+[[package]]
 name = "carbon-kamino-lending-decoder"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1996,6 +2024,24 @@ dependencies = [
  "solana-transaction-status",
  "syn 1.0.109",
  "unicode-xid",
+]
+
+[[package]]
+name = "carbon-test-utils"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "879805422e8e800b8413c9c77e363f1de7379b1509ca40faf83c647c6af8bf20"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bs58",
+ "hex",
+ "serde",
+ "serde_json",
+ "solana-account",
+ "solana-instruction",
+ "solana-pubkey",
+ "solana-transaction-status",
 ]
 
 [[package]]
@@ -4894,7 +4940,10 @@ dependencies = [
  "base64 0.22.1",
  "byte-unit",
  "carbon-core",
+ "carbon-jupiter-dca-decoder",
+ "carbon-kamino-farms-decoder",
  "carbon-kamino-lending-decoder",
+ "carbon-test-utils",
  "cargo-llvm-cov",
  "chrono",
  "clap",
