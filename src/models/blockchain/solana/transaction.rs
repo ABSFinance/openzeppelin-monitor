@@ -9,7 +9,6 @@ use {
 		transaction::{Result as TransactionResult, VersionedTransaction},
 		transaction_context::TransactionReturnData,
 	},
-	solana_transaction_status::option_serializer,
 	solana_transaction_status::{InnerInstructions, Rewards, UiTransactionStatusMeta},
 };
 
@@ -178,7 +177,6 @@ impl TryFrom<SolanaTransaction> for UiTransactionStatusMeta {
 
 	fn try_from(value: SolanaTransaction) -> Result<Self, Self::Error> {
 		log::trace!("try_from(transaction_update: {:?})", value);
-		let accounts = value.transaction.message.static_account_keys();
 
 		Ok(UiTransactionStatusMeta {
 			err: value.meta.err,

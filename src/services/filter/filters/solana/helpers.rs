@@ -8,12 +8,14 @@ use {
 	solana_instruction::AccountMeta,
 	solana_pubkey::Pubkey,
 	solana_sdk::{
+		bs58,
 		message::{
 			v0::{LoadedAddresses, LoadedMessage},
 			VersionedMessage,
 		},
 		transaction::Transaction,
 	},
+	solana_transaction_status::UiInstruction,
 };
 
 /// Helper functions for Solana block filtering
@@ -79,6 +81,8 @@ impl SolanaFilterHelpers {
 		);
 		let message = transaction.transaction.message.clone();
 		let meta = transaction.meta.clone();
+		let inner_instructions = meta.inner_instructions.clone();
+		let loaded_addresses = meta.loaded_addresses.clone();
 
 		let mut instructions_with_metadata =
 			Vec::<(SolanaInstructionMetadata, solana_instruction::Instruction)>::new();
@@ -119,53 +123,61 @@ impl SolanaFilterHelpers {
 						},
 					));
 
-					if let Some(inner_instructions) = &meta.inner_instructions.iter() {
-						for inner_instructions_per_tx in inner_instructions {
-							if inner_instructions_per_tx.index == i as u8 {
-								for inner_instruction in
-									inner_instructions_per_tx.instructions.iter()
-								{
-									let program_id = *legacy
-										.account_keys
-										.get(
-											inner_instruction.instruction.program_id_index as usize,
-										)
-										.unwrap_or(&Pubkey::default());
+					for inner_instructions_per_tx in inner_instructions
+						.clone()
+						.unwrap_or_else(std::vec::Vec::new)
+					{
+						if inner_instructions_per_tx.index == i as u8 {
+							for inner_instruction in inner_instructions_per_tx.instructions.iter() {
+								match inner_instruction {
+									UiInstruction::Compiled(compiled_instruction) => {
+										let program_id = *legacy
+											.account_keys
+											.get(compiled_instruction.program_id_index as usize)
+											.unwrap_or(&Pubkey::default());
 
-									let accounts: Vec<_> = inner_instruction
-										.instruction
-										.accounts
-										.iter()
-										.filter_map(|account_index| {
-											let account_pubkey =
-												legacy.account_keys.get(*account_index as usize)?;
+										let accounts: Vec<_> = compiled_instruction
+											.accounts
+											.iter()
+											.filter_map(|account_index| {
+												let account_pubkey = legacy
+													.account_keys
+													.get(*account_index as usize)?;
 
-											Some(AccountMeta {
-												pubkey: *account_pubkey,
-												is_writable: legacy.is_maybe_writable(
-													*account_index as usize,
-													None,
-												),
-												is_signer: legacy
-													.is_signer(*account_index as usize),
+												Some(AccountMeta {
+													pubkey: *account_pubkey,
+													is_writable: legacy.is_maybe_writable(
+														*account_index as usize,
+														None,
+													),
+													is_signer: legacy
+														.is_signer(*account_index as usize),
+												})
 											})
-										})
-										.collect();
+											.collect();
 
-									instructions_with_metadata.push((
-										SolanaInstructionMetadata {
-											transaction_metadata: transaction_metadata.clone(),
-											stack_height: inner_instruction
-												.stack_height
-												.unwrap_or(1),
-											index: inner_instructions_per_tx.index as u32,
-										},
-										solana_instruction::Instruction {
-											program_id,
-											accounts,
-											data: inner_instruction.instruction.data.clone(),
-										},
-									));
+										instructions_with_metadata.push((
+											SolanaInstructionMetadata {
+												transaction_metadata: transaction_metadata.clone(),
+												stack_height: compiled_instruction
+													.stack_height
+													.unwrap_or(1),
+												index: inner_instructions_per_tx.index as u32,
+											},
+											solana_instruction::Instruction {
+												program_id,
+												accounts,
+												data: bs58::decode(&compiled_instruction.data)
+													.into_vec()
+													.unwrap_or_else(|_| vec![]),
+											},
+										));
+									}
+									_ => {
+										log::warn!(
+											"Unsupported inner instruction type encountered"
+										);
+									}
 								}
 							}
 						}
@@ -174,15 +186,15 @@ impl SolanaFilterHelpers {
 			}
 			VersionedMessage::V0(v0) => {
 				let loaded_addresses = LoadedAddresses {
-					writable: meta
-						.loaded_addresses
+					writable: loaded_addresses
+						.clone()
 						.unwrap()
 						.writable
 						.iter()
 						.map(|s| s.parse::<Pubkey>().unwrap())
 						.collect(),
-					readonly: meta
-						.loaded_addresses
+					readonly: loaded_addresses
+						.clone()
 						.unwrap()
 						.readonly
 						.iter()
@@ -230,54 +242,61 @@ impl SolanaFilterHelpers {
 						},
 					));
 
-					if let Some(inner_instructions) = &meta.inner_instructions {
-						for inner_instructions_per_tx in inner_instructions {
-							if inner_instructions_per_tx.index == i as u8 {
-								for inner_instruction in
-									inner_instructions_per_tx.instructions.iter()
-								{
-									let program_id = *loaded_message
-										.account_keys()
-										.get(
-											inner_instruction.instruction.program_id_index as usize,
-										)
-										.unwrap_or(&Pubkey::default());
+					for inner_instructions_per_tx in inner_instructions
+						.clone()
+						.unwrap_or_else(std::vec::Vec::new)
+					{
+						if inner_instructions_per_tx.index == i as u8 {
+							for inner_instruction in inner_instructions_per_tx.instructions.iter() {
+								match inner_instruction {
+									UiInstruction::Compiled(compiled_instruction) => {
+										let program_id = *loaded_message
+											.account_keys()
+											.get(compiled_instruction.program_id_index as usize)
+											.unwrap_or(&Pubkey::default());
 
-									let accounts = inner_instruction
-										.instruction
-										.accounts
-										.iter()
-										.map(|account_index| {
-											let account_pubkey = loaded_message
-												.account_keys()
-												.get(*account_index as usize)
-												.copied()
-												.unwrap_or_default();
+										let accounts = compiled_instruction
+											.accounts
+											.iter()
+											.map(|account_index| {
+												let account_pubkey = loaded_message
+													.account_keys()
+													.get(*account_index as usize)
+													.copied()
+													.unwrap_or_default();
 
-											AccountMeta {
-												pubkey: account_pubkey,
-												is_writable: loaded_message
-													.is_writable(*account_index as usize),
-												is_signer: loaded_message
-													.is_signer(*account_index as usize),
-											}
-										})
-										.collect::<Vec<_>>();
+												AccountMeta {
+													pubkey: account_pubkey,
+													is_writable: loaded_message
+														.is_writable(*account_index as usize),
+													is_signer: loaded_message
+														.is_signer(*account_index as usize),
+												}
+											})
+											.collect::<Vec<_>>();
 
-									instructions_with_metadata.push((
-										SolanaInstructionMetadata {
-											transaction_metadata: transaction_metadata.clone(),
-											stack_height: inner_instruction
-												.stack_height
-												.unwrap_or(1),
-											index: inner_instructions_per_tx.index as u32,
-										},
-										solana_instruction::Instruction {
-											program_id,
-											accounts,
-											data: inner_instruction.instruction.data.clone(),
-										},
-									));
+										instructions_with_metadata.push((
+											SolanaInstructionMetadata {
+												transaction_metadata: transaction_metadata.clone(),
+												stack_height: compiled_instruction
+													.stack_height
+													.unwrap_or(1),
+												index: inner_instructions_per_tx.index as u32,
+											},
+											solana_instruction::Instruction {
+												program_id,
+												accounts,
+												data: bs58::decode(&compiled_instruction.data)
+													.into_vec()
+													.unwrap_or_else(|_| vec![]),
+											},
+										));
+									}
+									_ => {
+										log::warn!(
+											"Unsupported inner instruction type encountered"
+										);
+									}
 								}
 							}
 						}

@@ -6,21 +6,13 @@
 use anyhow::Context;
 use async_trait::async_trait;
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::pubkey::Pubkey;
-use solana_sdk::{message::v0::LoadedAddresses, transaction_context::TransactionReturnData};
-use solana_signature::Signature;
-use solana_transaction_status::option_serializer;
-use solana_transaction_status::{
-	InnerInstruction, InnerInstructions, Rewards, UiCompiledInstruction, UiInnerInstructions,
-	UiInstruction, UiLoadedAddresses, UiTransactionReturnData, UiTransactionStatusMeta,
-	UiTransactionTokenBalance,
-};
+
 use std::{any::Any, str::FromStr};
 
 use crate::models::default_ui_transaction_status_meta;
-use crate::models::SolanaTransactionStatusMeta;
+
 use crate::{
-	models::{BlockType, Network, SolanaBlock, SolanaTransaction, TransactionTokenBalance},
+	models::{BlockType, Network, SolanaBlock, SolanaTransaction},
 	services::{
 		blockchain::{
 			client::{BlockChainClient, BlockFilterFactory},

@@ -5,7 +5,10 @@ use crate::integration::mocks::{
 use mockall::predicate;
 use mockito::Server;
 use openzeppelin_monitor::{
-	models::{BlockType, Network, SecretString, SecretValue, SolanaBlock, SolanaTransaction},
+	models::{
+		default_ui_transaction_status_meta, BlockType, Network, SecretString, SecretValue,
+		SolanaBlock, SolanaTransaction,
+	},
 	services::blockchain::{BlockChainClient, SolanaClient, SolanaClientTrait},
 };
 use solana_sdk::{
@@ -49,7 +52,7 @@ async fn test_get_transaction_by_signature() {
 	let expected_transaction = SolanaTransaction {
 		signature,
 		transaction: transaction.into(),
-		meta: default_status_meta(),
+		meta: default_ui_transaction_status_meta(),
 		slot: 12345,
 		block_time: Some(1678901234),
 	};
@@ -121,7 +124,7 @@ async fn test_get_blocks() {
 	let expected_transaction = SolanaTransaction {
 		signature,
 		transaction: transaction.into(),
-		meta: default_status_meta(),
+		meta: default_ui_transaction_status_meta(),
 		slot: 12345,
 		block_time: Some(1678901234),
 	};
@@ -212,7 +215,7 @@ async fn test_get_block_by_slot() {
 	let expected_transaction = SolanaTransaction {
 		signature,
 		transaction: transaction.into(),
-		meta: default_status_meta(),
+		meta: default_ui_transaction_status_meta(),
 		slot: 12345,
 		block_time: Some(1678901234),
 	};
@@ -380,8 +383,4 @@ async fn test_client_with_non_rpc_urls() {
 		result.is_err(),
 		"Client creation should fail with non-RPC URLs"
 	);
-}
-
-fn default_status_meta() -> openzeppelin_monitor::models::SolanaTransactionStatusMeta {
-	Default::default()
 }
