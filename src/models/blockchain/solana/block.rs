@@ -44,6 +44,7 @@ pub struct SolanaReward {
 
 impl SolanaBlock {
 	/// Creates a new SolanaBlock with the given slot and transactions
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		slot: u64,
 		blockhash: String,
@@ -154,7 +155,6 @@ mod tests {
 			.message(VersionedMessage::Legacy(message))
 			.signature(signature)
 			.build()
-			.into()
 	}
 
 	fn create_test_reward() -> SolanaReward {

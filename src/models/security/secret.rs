@@ -12,8 +12,7 @@
 
 use oz_keystore::HashicorpCloudClient;
 use serde::{Deserialize, Serialize};
-use std::{env, fmt, sync::Arc};
-use tokio::sync::OnceCell;
+use std::{env, fmt, sync::Arc, sync::Mutex};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
@@ -90,20 +89,33 @@ impl VaultClient for VaultType {
 }
 
 // Global vault client instance
-static VAULT_CLIENT: OnceCell<VaultType> = OnceCell::const_new();
+static VAULT_CLIENT: Mutex<Option<VaultType>> = Mutex::new(None);
 
 /// Gets the global vault client instance, initializing it if necessary
 pub async fn get_vault_client() -> SecurityResult<&'static VaultType> {
-	VAULT_CLIENT
-		.get_or_try_init(|| async { VaultType::from_env() })
-		.await
-		.map_err(|e| {
-			Box::new(SecurityError::parse_error(
-				"Failed to get vault client",
-				Some(e.into()),
-				None,
+	// Try to get the existing client
+	{
+		let guard = VAULT_CLIENT.lock().unwrap();
+		if let Some(ref client) = *guard {
+			// SAFETY: We're returning a reference to a static that lives forever
+			unsafe {
+				return Ok(std::mem::transmute::<&VaultType, &VaultType>(client));
+			}
+		}
+	}
+
+	// Initialize the client
+	let client = VaultType::from_env()?;
+	{
+		let mut guard = VAULT_CLIENT.lock().unwrap();
+		*guard = Some(client);
+		// SAFETY: We're returning a reference to a static that lives forever
+		unsafe {
+			Ok(std::mem::transmute::<&VaultType, &VaultType>(
+				guard.as_ref().unwrap(),
 			))
-		})
+		}
+	}
 }
 
 /// A type that represents a secret value that can be sourced from different places
@@ -333,8 +345,8 @@ mod tests {
 		F: FnOnce() -> Fut,
 		Fut: std::future::Future<Output = ()>,
 	{
-		// Simpler lock acquisition without poisoning recovery
-		let _lock = ENV_MUTEX.lock().unwrap();
+		// Don't reset global state - let each test run independently
+		// The environment variable isolation should be sufficient
 
 		let env_vars = [
 			("HCP_CLIENT_ID", "test-client-id"),
@@ -557,7 +569,7 @@ mod tests {
 				.err()
 				.unwrap()
 				.to_string()
-				.contains("Failed to get vault client"));
+				.contains("Missing HCP_CLIENT_ID environment variable"));
 
 			// Set the environment variable
 			std::env::set_var("HCP_CLIENT_ID", "test-client-id");

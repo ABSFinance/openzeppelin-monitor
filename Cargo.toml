@@ -13,7 +13,6 @@ panic = 'abort'
 debug = true
 opt-level = 0
 overflow-checks = true
-panic = 'unwind'
 
 [dependencies]
 actix-rt = "2.0.0"

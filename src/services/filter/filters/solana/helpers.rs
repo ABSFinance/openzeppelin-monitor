@@ -308,3 +308,9 @@ impl SolanaFilterHelpers {
 		Ok(instructions_with_metadata)
 	}
 }
+
+impl Default for SolanaFilterHelpers {
+	fn default() -> Self {
+		Self::new()
+	}
+}
