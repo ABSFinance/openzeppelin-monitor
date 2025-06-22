@@ -205,7 +205,7 @@ impl ContractSpec {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		models::{SolanaDecodedInstruction, SolanaInstructionDecoder, SolanaTransactionStatusMeta},
+		models::{SolanaDecodedInstruction, SolanaInstructionDecoder},
 		utils::tests::solana::{
 			instruction::{InstructionBuilder, InstructionMetadataBuilder},
 			monitor::MonitorBuilder,
@@ -220,6 +220,7 @@ mod tests {
 		pubkey::Pubkey,
 		transaction::VersionedTransaction,
 	};
+	use solana_transaction_status::{option_serializer, UiTransactionStatusMeta};
 	use std::str::FromStr;
 
 	// Helper function to create a test monitor
@@ -339,7 +340,21 @@ mod tests {
 						Some(&metadata.transaction_metadata.fee_payer),
 					)),
 				),
-				meta: SolanaTransactionStatusMeta::default(),
+				meta: UiTransactionStatusMeta {
+					err: None,
+					status: Ok(()),
+					fee: 0,
+					pre_balances: Vec::new(),
+					post_balances: Vec::new(),
+					inner_instructions: option_serializer::OptionSerializer::none(),
+					log_messages: option_serializer::OptionSerializer::none(),
+					pre_token_balances: option_serializer::OptionSerializer::none(),
+					post_token_balances: option_serializer::OptionSerializer::none(),
+					rewards: option_serializer::OptionSerializer::none(),
+					loaded_addresses: option_serializer::OptionSerializer::none(),
+					return_data: option_serializer::OptionSerializer::none(),
+					compute_units_consumed: option_serializer::OptionSerializer::none(),
+				},
 				slot: metadata.transaction_metadata.slot,
 				block_time: metadata.transaction_metadata.block_time,
 			},

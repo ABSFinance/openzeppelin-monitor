@@ -9,8 +9,9 @@ pub use monitor::{
 	SolanaMatchParamsMap, SolanaMonitorMatch,
 };
 pub use transaction::{
-	SolanaTransaction, TransactionMetadata as SolanaTransactionMetadata,
-	TransactionStatusMeta as SolanaTransactionStatusMeta,
+	default_ui_transaction_status_meta, SolanaTransaction,
+	TransactionMetadata as SolanaTransactionMetadata,
+	TransactionStatusMeta as SolanaTransactionStatusMeta, TransactionTokenBalance,
 };
 
 pub use instruction::{

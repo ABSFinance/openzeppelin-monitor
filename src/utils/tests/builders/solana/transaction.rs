@@ -8,13 +8,14 @@ use solana_sdk::{
 	pubkey::Pubkey,
 	signature::Signature,
 };
+use solana_transaction_status::UiTransactionStatusMeta;
 
 /// Builder for creating test Solana transactions
 pub struct TransactionBuilder {
 	slot: Option<u64>,
 	signature: Option<Signature>,
 	fee_payer: Option<Pubkey>,
-	meta: Option<SolanaTransactionStatusMeta>,
+	meta: Option<UiTransactionStatusMeta>,
 	message: Option<VersionedMessage>,
 	block_time: Option<i64>,
 	instructions: Vec<SolanaDecodedInstruction<Vec<u8>>>,
@@ -53,7 +54,7 @@ impl TransactionBuilder {
 	}
 
 	/// Sets the transaction status metadata
-	pub fn meta(mut self, meta: SolanaTransactionStatusMeta) -> Self {
+	pub fn meta(mut self, meta: UiTransactionStatusMeta) -> Self {
 		self.meta = Some(meta);
 		self
 	}

@@ -10,7 +10,6 @@ mod evm {
 mod stellar {
 	pub mod client;
 }
-
 mod solana {
 	pub mod client;
 }

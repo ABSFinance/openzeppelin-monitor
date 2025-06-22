@@ -22,7 +22,7 @@ pub struct SolanaBlock {
 	/// The block height
 	pub block_height: Option<u64>,
 	/// The transactions in this block
-	pub transactions: Vec<Transaction>,
+	pub transactions: Vec<SolanaTransaction>,
 	/// The rewards for this block
 	pub rewards: Option<Vec<SolanaReward>>,
 	/// The block's commitment level
@@ -50,7 +50,7 @@ impl SolanaBlock {
 		parent_slot: u64,
 		block_time: Option<i64>,
 		block_height: Option<u64>,
-		transactions: Vec<Transaction>,
+		transactions: Vec<SolanaTransaction>,
 		rewards: Option<Vec<SolanaReward>>,
 		commitment: CommitmentConfig,
 	) -> Self {
@@ -92,7 +92,7 @@ impl SolanaBlock {
 	}
 
 	/// Returns a reference to the transactions in this block
-	pub fn transactions(&self) -> &[Transaction] {
+	pub fn transactions(&self) -> &[SolanaTransaction] {
 		&self.transactions
 	}
 
@@ -129,10 +129,9 @@ mod tests {
 		message::{Message, VersionedMessage},
 		pubkey::Pubkey,
 		signature::{Keypair, Signer},
-		transaction::Transaction,
 	};
 
-	fn create_test_transaction() -> Transaction {
+	fn create_test_transaction() -> SolanaTransaction {
 		let fee_payer = Keypair::new();
 		let program_id = Pubkey::new_unique();
 		let account1 = Pubkey::new_unique();

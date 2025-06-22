@@ -7,7 +7,6 @@
 //! - Connection health checks
 //! - Endpoint rotation for high availability
 
-use anyhow::Context;
 use async_trait::async_trait;
 use reqwest::Client;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -65,7 +64,7 @@ impl SolanaTransportClient {
 			return Err(anyhow::anyhow!("No valid RPC URLs found"));
 		}
 
-		let client = Arc::new(RpcClient::new(rpc_urls[0].url.to_string()));
+		let client = Arc::new(RpcClient::new(rpc_urls[0].url.as_ref().to_string()));
 
 		let middleware_client = ClientBuilder::new(Client::new())
 			.with(RetryTransientMiddleware::new_with_policy(
@@ -75,10 +74,10 @@ impl SolanaTransportClient {
 
 		let endpoint_manager = EndpointManager::new(
 			middleware_client,
-			&rpc_urls[0].url.to_string(),
+			rpc_urls[0].url.as_ref(),
 			rpc_urls[1..]
 				.iter()
-				.map(|url| url.url.to_string())
+				.map(|url| url.url.as_ref().to_string())
 				.collect(),
 		);
 
@@ -150,11 +149,7 @@ impl RotatingTransport for SolanaTransportClient {
 		Ok(())
 	}
 
-	async fn update_client(&self, url: &str) -> Result<(), anyhow::Error> {
-		// Update the RPC client with the new URL
-		let new_client = Arc::new(RpcClient::new(url.to_string()));
-		// Note: We can't directly update the Arc<RpcClient>, but we can create a new instance
-		// The old client will be dropped when the Arc is dropped
+	async fn update_client(&self, _url: &str) -> Result<(), anyhow::Error> {
 		Ok(())
 	}
 }

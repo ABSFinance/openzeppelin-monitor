@@ -13,6 +13,9 @@ mod integration {
 			mod stellar {
 				mod client;
 			}
+			mod solana {
+				mod client;
+			}
 		}
 		mod transports {
 			mod evm {
