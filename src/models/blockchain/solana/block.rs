@@ -43,30 +43,6 @@ pub struct SolanaReward {
 }
 
 impl SolanaBlock {
-	/// Creates a new SolanaBlock with the given slot and transactions
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		slot: u64,
-		blockhash: String,
-		parent_slot: u64,
-		block_time: Option<i64>,
-		block_height: Option<u64>,
-		transactions: Vec<SolanaTransaction>,
-		rewards: Option<Vec<SolanaReward>>,
-		commitment: CommitmentConfig,
-	) -> Self {
-		Self {
-			slot,
-			blockhash,
-			parent_slot,
-			block_time,
-			block_height,
-			transactions,
-			rewards,
-			commitment,
-		}
-	}
-
 	/// Returns the block's slot number
 	pub fn slot(&self) -> u64 {
 		self.slot
@@ -177,16 +153,16 @@ mod tests {
 		let rewards = Some(vec![create_test_reward()]);
 		let commitment = CommitmentConfig::confirmed();
 
-		let block = SolanaBlock::new(
+		let block = SolanaBlock {
 			slot,
-			blockhash.clone(),
+			blockhash: blockhash.clone(),
 			parent_slot,
 			block_time,
 			block_height,
-			transactions.clone(),
-			rewards.clone(),
+			transactions: transactions.clone(),
+			rewards: rewards.clone(),
 			commitment,
-		);
+		};
 
 		assert_eq!(block.slot(), slot);
 		assert_eq!(block.blockhash(), blockhash);
@@ -200,16 +176,16 @@ mod tests {
 
 	#[test]
 	fn test_solana_block_default_values() {
-		let block = SolanaBlock::new(
-			0,
-			"".to_string(),
-			0,
-			None,
-			None,
-			vec![],
-			None,
-			CommitmentConfig::default(),
-		);
+		let block = SolanaBlock {
+			slot: 0,
+			blockhash: "".to_string(),
+			parent_slot: 0,
+			block_time: None,
+			block_height: None,
+			transactions: vec![],
+			rewards: None,
+			commitment: CommitmentConfig::default(),
+		};
 
 		assert_eq!(block.slot(), 0);
 		assert_eq!(block.blockhash(), "");
@@ -238,16 +214,16 @@ mod tests {
 			create_test_transaction(),
 		];
 
-		let block = SolanaBlock::new(
-			12345,
-			"test_blockhash".to_string(),
-			12344,
-			Some(1678901234),
-			Some(12345),
-			transactions.clone(),
-			None,
-			CommitmentConfig::confirmed(),
-		);
+		let block = SolanaBlock {
+			slot: 12345,
+			blockhash: "test_blockhash".to_string(),
+			parent_slot: 12344,
+			block_time: Some(1678901234),
+			block_height: Some(12345),
+			transactions: transactions.clone(),
+			rewards: None,
+			commitment: CommitmentConfig::confirmed(),
+		};
 
 		assert_eq!(block.transactions().len(), 3);
 		assert_eq!(block.transactions(), transactions.as_slice());
@@ -261,16 +237,16 @@ mod tests {
 			create_test_reward(),
 		]);
 
-		let block = SolanaBlock::new(
-			12345,
-			"test_blockhash".to_string(),
-			12344,
-			Some(1678901234),
-			Some(12345),
-			vec![],
-			rewards.clone(),
-			CommitmentConfig::confirmed(),
-		);
+		let block = SolanaBlock {
+			slot: 12345,
+			blockhash: "test_blockhash".to_string(),
+			parent_slot: 12344,
+			block_time: Some(1678901234),
+			block_height: Some(12345),
+			transactions: vec![],
+			rewards: rewards.clone(),
+			commitment: CommitmentConfig::confirmed(),
+		};
 
 		assert_eq!(block.rewards().unwrap().len(), 3);
 		assert_eq!(block.rewards(), rewards.as_deref());
