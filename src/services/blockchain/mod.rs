@@ -10,7 +10,7 @@
 //! - Client pool for managing multiple clients
 
 mod client;
-mod clients;
+pub mod clients;
 mod error;
 mod pool;
 mod transports;
@@ -23,5 +23,5 @@ pub use error::BlockChainError;
 pub use pool::{ClientPool, ClientPoolTrait};
 pub use transports::{
 	BlockchainTransport, EVMTransportClient, EndpointManager, HttpTransportClient,
-	RotatingTransport, StellarTransportClient, TransientErrorRetryStrategy,
+	RotatingTransport, StellarTransportClient, TransientErrorRetryStrategy, TransportError,
 };

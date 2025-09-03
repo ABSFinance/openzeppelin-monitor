@@ -12,6 +12,7 @@ use crate::{
 	models::{Monitor, MonitorMatch, ScriptLanguage, TriggerTypeConfig},
 	repositories::{TriggerRepositoryTrait, TriggerService},
 	services::{notification::NotificationService, trigger::error::TriggerError},
+	utils::normalize_string,
 };
 
 /// Trait for executing triggers
@@ -96,7 +97,7 @@ impl<T: TriggerRepositoryTrait + Send + Sync> TriggerExecutionServiceTrait
 				.ok_or_else(|| TriggerError::not_found(trigger_slug.to_string(), None, None))?;
 
 			self.notification_service
-				.execute(&trigger, variables.clone(), monitor_match, trigger_scripts)
+				.execute(&trigger, &variables, monitor_match, trigger_scripts)
 				.await
 				// We remove logging capability here since we're logging it further down
 				.map_err(|e| TriggerError::execution_error_without_log(e.to_string(), None, None))
@@ -166,7 +167,11 @@ impl<T: TriggerRepositoryTrait + Send + Sync> TriggerExecutionServiceTrait
 					})?;
 				// Store the script content with its language
 				scripts.insert(
-					format!("{}|{}", monitor.name, condition.script_path),
+					format!(
+						"{}|{}",
+						normalize_string(&monitor.name),
+						condition.script_path
+					),
 					(condition.language.clone(), content),
 				);
 			}
@@ -206,7 +211,11 @@ impl<T: TriggerRepositoryTrait + Send + Sync> TriggerExecutionServiceTrait
 				})?;
 
 				scripts.insert(
-					format!("{}|{}", monitor.name, script_path.display()),
+					format!(
+						"{}|{}",
+						normalize_string(&monitor.name),
+						script_path.display()
+					),
 					(language.clone(), content),
 				);
 			}

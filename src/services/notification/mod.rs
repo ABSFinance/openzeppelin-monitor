@@ -3,7 +3,6 @@
 //! This module provides functionality to send notifications through various channels
 //! Supports variable substitution in message templates.
 
-use anyhow::Context;
 use async_trait::async_trait;
 
 use std::collections::HashMap;
@@ -38,8 +37,8 @@ pub trait Notifier {
 	/// * `message` - The formatted message to send
 	///
 	/// # Returns
-	/// * `Result<(), anyhow::Error>` - Success or error
-	async fn notify(&self, message: &str) -> Result<(), anyhow::Error>;
+	/// * `Result<(), NotificationError>` - Success or error
+	async fn notify(&self, message: &str) -> Result<(), NotificationError>;
 
 	/// Sends a notification with custom payload fields
 	///
@@ -48,12 +47,12 @@ pub trait Notifier {
 	/// * `payload_fields` - Additional fields to include in the payload
 	///
 	/// # Returns
-	/// * `Result<(), anyhow::Error>` - Success or error
+	/// * `Result<(), NotificationError>` - Success or error
 	async fn notify_with_payload(
 		&self,
 		message: &str,
 		_payload_fields: HashMap<String, serde_json::Value>,
-	) -> Result<(), anyhow::Error> {
+	) -> Result<(), NotificationError> {
 		// Default implementation just calls notify
 		self.notify(message).await
 	}
@@ -72,12 +71,12 @@ pub trait ScriptExecutor {
 	/// * `script_content` - The script content to execute
 	///
 	/// # Returns
-	/// * `Result<(), anyhow::Error>` - Success or error
+	/// * `Result<(), NotificationError>` - Success or error
 	async fn script_notify(
 		&self,
 		monitor_match: &MonitorMatch,
 		script_content: &(ScriptLanguage, String),
-	) -> Result<(), anyhow::Error>;
+	) -> Result<(), NotificationError>;
 }
 
 /// Service for managing notifications across different channels
@@ -103,144 +102,72 @@ impl NotificationService {
 	pub async fn execute(
 		&self,
 		trigger: &Trigger,
-		variables: HashMap<String, String>,
+		variables: &HashMap<String, String>,
 		monitor_match: &MonitorMatch,
 		trigger_scripts: &HashMap<String, (ScriptLanguage, String)>,
 	) -> Result<(), NotificationError> {
 		match &trigger.trigger_type {
 			TriggerType::Slack => {
-				let notifier = SlackNotifier::from_config(&trigger.config);
-				if let Some(notifier) = notifier {
-					notifier
-						.notify(&notifier.format_message(&variables))
-						.await
-						.with_context(|| {
-							format!("Failed to execute notification {}", trigger.name)
-						})?;
-				} else {
-					return Err(NotificationError::config_error(
-						"Invalid slack configuration",
-						None,
-						None,
-					));
-				}
+				let notifier = SlackNotifier::from_config(&trigger.config)?;
+				let message = notifier.format_message(variables);
+				notifier.notify(&message).await?;
 			}
 			TriggerType::Email => {
-				let notifier = EmailNotifier::from_config(&trigger.config);
-				if let Some(notifier) = notifier {
-					notifier
-						.notify(&notifier.format_message(&variables))
-						.await
-						.with_context(|| {
-							format!("Failed to execute notification {}", trigger.name)
-						})?;
-				} else {
-					return Err(NotificationError::config_error(
-						"Invalid email configuration",
-						None,
-						None,
-					));
-				}
+				let notifier = EmailNotifier::from_config(&trigger.config)?;
+				let message = notifier.format_message(variables);
+				notifier.notify(&message).await?;
 			}
 			TriggerType::Webhook => {
-				let notifier = WebhookNotifier::from_config(&trigger.config);
-				if let Some(notifier) = notifier {
-					notifier
-						.notify(&notifier.format_message(&variables))
-						.await
-						.with_context(|| {
-							format!("Failed to execute notification {}", trigger.name)
-						})?;
-				} else {
-					return Err(NotificationError::config_error(
-						"Invalid webhook configuration",
-						None,
-						None,
-					));
-				}
+				let notifier = WebhookNotifier::from_config(&trigger.config)?;
+				let message = notifier.format_message(variables);
+				notifier.notify(&message).await?;
 			}
 			TriggerType::Discord => {
-				let notifier = DiscordNotifier::from_config(&trigger.config);
-
-				if let Some(notifier) = notifier {
-					notifier
-						.notify(&notifier.format_message(&variables))
-						.await
-						.with_context(|| {
-							format!("Failed to execute notification {}", trigger.name)
-						})?;
-				} else {
-					return Err(NotificationError::config_error(
-						"Invalid discord configuration",
-						None,
-						None,
-					));
-				}
+				let notifier = DiscordNotifier::from_config(&trigger.config)?;
+				let message = notifier.format_message(variables);
+				notifier.notify(&message).await?;
 			}
 			TriggerType::Telegram => {
-				let notifier = TelegramNotifier::from_config(&trigger.config);
-				if let Some(notifier) = notifier {
-					notifier
-						.notify(&notifier.format_message(&variables))
-						.await
-						.with_context(|| {
-							format!("Failed to execute notification {}", trigger.name)
-						})?;
-				} else {
-					return Err(NotificationError::config_error(
-						"Invalid telegram configuration",
-						None,
-						None,
-					));
-				}
+				let notifier = TelegramNotifier::from_config(&trigger.config)?;
+				let message = notifier.format_message(variables);
+				notifier.notify(&message).await?;
 			}
 			TriggerType::Script => {
-				let notifier = ScriptNotifier::from_config(&trigger.config);
-				if let Some(notifier) = notifier {
-					let monitor_name = match monitor_match {
-						MonitorMatch::EVM(evm_match) => &evm_match.monitor.name,
-						MonitorMatch::Stellar(stellar_match) => &stellar_match.monitor.name,
-						MonitorMatch::Solana(solana_match) => &solana_match.monitor.name,
-					};
-					let script_path = match &trigger.config {
-						TriggerTypeConfig::Script { script_path, .. } => script_path,
-						_ => {
-							return Err(NotificationError::config_error(
-								"Invalid script configuration".to_string(),
-								None,
-								None,
-							))
-						}
-					};
-					let script = trigger_scripts
-						.get(&format!("{}|{}", monitor_name, script_path))
-						.ok_or_else(|| {
-							NotificationError::config_error(
-								"Script content not found".to_string(),
-								None,
-								None,
-							)
-						});
-					let script_content = match &script {
-						Ok(content) => content,
-						Err(e) => {
-							return Err(NotificationError::config_error(e.to_string(), None, None))
-						}
-					};
+				let notifier = ScriptNotifier::from_config(&trigger.config)?;
+				let monitor_name = match monitor_match {
+					MonitorMatch::Solana(solana_match) => &solana_match.monitor.name,
+					MonitorMatch::EVM(evm_match) => &evm_match.monitor.name,
+					MonitorMatch::Stellar(stellar_match) => &stellar_match.monitor.name,
+				};
+				let script_path = match &trigger.config {
+					TriggerTypeConfig::Script { script_path, .. } => script_path,
+					_ => {
+						return Err(NotificationError::config_error(
+							"Invalid script configuration".to_string(),
+							None,
+							None,
+						))
+					}
+				};
+				let script = trigger_scripts
+					.get(&format!("{}|{}", monitor_name, script_path))
+					.ok_or_else(|| {
+						NotificationError::config_error(
+							"Script content not found".to_string(),
+							None,
+							None,
+						)
+					});
+				let script_content = match &script {
+					Ok(content) => content,
+					Err(e) => {
+						return Err(NotificationError::config_error(e.to_string(), None, None))
+					}
+				};
 
-					notifier
-						.script_notify(monitor_match, script_content)
-						.await
-						.with_context(|| {
-							format!("Failed to execute notification {}", trigger.name)
-						})?;
-				} else {
-					return Err(NotificationError::config_error(
-						"Invalid script configuration".to_string(),
-						None,
-						None,
-					));
-				}
+				notifier
+					.script_notify(monitor_match, script_content)
+					.await?;
 			}
 		}
 		Ok(())
@@ -328,7 +255,7 @@ mod tests {
 		let result = service
 			.execute(
 				&trigger,
-				variables,
+				&variables,
 				&create_mock_monitor_match(),
 				&HashMap::new(),
 			)
@@ -356,7 +283,7 @@ mod tests {
 		let result = service
 			.execute(
 				&trigger,
-				variables,
+				&variables,
 				&create_mock_monitor_match(),
 				&HashMap::new(),
 			)
@@ -384,7 +311,7 @@ mod tests {
 		let result = service
 			.execute(
 				&trigger,
-				variables,
+				&variables,
 				&create_mock_monitor_match(),
 				&HashMap::new(),
 			)
@@ -412,7 +339,7 @@ mod tests {
 		let result = service
 			.execute(
 				&trigger,
-				variables,
+				&variables,
 				&create_mock_monitor_match(),
 				&HashMap::new(),
 			)
@@ -440,7 +367,7 @@ mod tests {
 		let result = service
 			.execute(
 				&trigger,
-				variables,
+				&variables,
 				&create_mock_monitor_match(),
 				&HashMap::new(),
 			)
@@ -469,7 +396,7 @@ mod tests {
 		let result = service
 			.execute(
 				&trigger,
-				variables,
+				&variables,
 				&create_mock_monitor_match(),
 				&HashMap::new(),
 			)

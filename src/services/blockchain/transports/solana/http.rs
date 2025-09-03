@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::{
 	models::Network,
 	services::blockchain::transports::{
-		BlockchainTransport, EndpointManager, RotatingTransport, TransientErrorRetryStrategy,
+		error::TransportError, BlockchainTransport, EndpointManager, RotatingTransport,
 	},
 };
 
@@ -98,7 +98,7 @@ impl BlockchainTransport for SolanaTransportClient {
 		&self,
 		method: &str,
 		params: Option<P>,
-	) -> Result<Value, anyhow::Error>
+	) -> Result<Value, TransportError>
 	where
 		P: Into<Value> + Send + Clone + Serialize,
 	{
@@ -118,17 +118,6 @@ impl BlockchainTransport for SolanaTransportClient {
 			"method": method,
 			"params": params.map(|p| p.into()).unwrap_or(Value::Null)
 		})
-	}
-
-	fn set_retry_policy(
-		&mut self,
-		retry_policy: ExponentialBackoff,
-		retry_strategy: Option<TransientErrorRetryStrategy>,
-	) -> Result<(), anyhow::Error> {
-		let strategy = retry_strategy.unwrap_or(TransientErrorRetryStrategy);
-		self.endpoint_manager
-			.set_retry_policy(retry_policy, strategy);
-		Ok(())
 	}
 
 	fn update_endpoint_manager_client(

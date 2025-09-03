@@ -15,9 +15,11 @@ mod solana {
 }
 
 mod endpoint_manager;
+mod error;
 mod http;
 
 pub use endpoint_manager::EndpointManager;
+pub use error::TransportError;
 pub use evm::http::EVMTransportClient;
 pub use http::HttpTransportClient;
 pub use solana::http::SolanaTransportClient;
@@ -25,8 +27,7 @@ pub use stellar::http::StellarTransportClient;
 
 use reqwest_middleware::ClientWithMiddleware;
 use reqwest_retry::{
-	default_on_request_failure, default_on_request_success, policies::ExponentialBackoff,
-	Retryable, RetryableStrategy,
+	default_on_request_failure, default_on_request_success, Retryable, RetryableStrategy,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -46,7 +47,7 @@ pub trait BlockchainTransport: Send + Sync {
 		&self,
 		method: &str,
 		params: Option<P>,
-	) -> Result<Value, anyhow::Error>
+	) -> Result<Value, TransportError>
 	where
 		P: Into<Value> + Send + Clone + Serialize;
 
@@ -63,13 +64,6 @@ pub trait BlockchainTransport: Send + Sync {
 			"params": params.map(|p| p.into())
 		})
 	}
-
-	/// Sets the retry policy for the transport
-	fn set_retry_policy(
-		&mut self,
-		retry_policy: ExponentialBackoff,
-		retry_strategy: Option<TransientErrorRetryStrategy>,
-	) -> Result<(), anyhow::Error>;
 
 	/// Update endpoint manager with a new client
 	fn update_endpoint_manager_client(

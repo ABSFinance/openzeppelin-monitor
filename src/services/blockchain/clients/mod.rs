@@ -9,6 +9,7 @@ mod evm {
 }
 mod stellar {
 	pub mod client;
+	pub mod error;
 }
 mod solana {
 	pub mod client;
@@ -17,3 +18,4 @@ mod solana {
 pub use evm::client::{EvmClient, EvmClientTrait};
 pub use solana::client::{SolanaClient, SolanaClientTrait};
 pub use stellar::client::{StellarClient, StellarClientTrait};
+pub use stellar::error::StellarClientError;

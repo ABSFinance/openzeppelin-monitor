@@ -8,10 +8,12 @@
 //! - Solana-specific implementation
 
 pub mod evm {
+	pub mod evaluator;
 	pub mod filter;
 	pub mod helpers;
 }
 pub mod stellar {
+	pub mod evaluator;
 	pub mod filter;
 	pub mod helpers;
 }
@@ -26,6 +28,7 @@ use crate::{
 	models::{BlockType, ContractSpec, Monitor, MonitorMatch, Network},
 	services::{blockchain::BlockFilterFactory, filter::error::FilterError},
 };
+
 pub use evm::filter::EVMBlockFilter;
 pub use solana::filter::SolanaBlockFilter;
 pub use stellar::filter::StellarBlockFilter;
