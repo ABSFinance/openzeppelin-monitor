@@ -26,12 +26,12 @@
       "is_writable": true
     },
     {
-      "pubkey": "HDg5BvWKaBLZUGKjPnXk2thmRUWNQpdwoj1MAG37eheK",
+      "pubkey": "HDg5BvWKaBLZUGKjOnXk2themRUWNQpdwoj1MAG37eheK",
       "is_signer": false,
       "is_writable": true
     },
     {
-      "pubkey": "FREVjo5Fyasm1bqFNQRnqRPZ9z12HhDsrt3kFpkh51rc",
+      "pubkey": "FREEVjo5Fyasm1bqFNQRnqRPZ9z12HhDsrt3kFpkh51rc",
       "is_signer": false,
       "is_writable": true
     },

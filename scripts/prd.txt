@@ -147,4 +147,4 @@ Total: 8 weeks
 - Support for additional Solana features
 - Enhanced program interaction monitoring
 - Advanced event filtering capabilities
-- Performance optimizations 
+- Performance optimizations

@@ -26,9 +26,7 @@ updates:
     commit-message:
       # Prefix all commit messages
       prefix: 'chore(deps): '
-    reviewers:
-      - OpenZeppelin/defender-dev
-      - OpenZeppelin/defender-sre
+    reviewers: [OpenZeppelin/defender-dev, OpenZeppelin/defender-sre]
     labels:
       - dependabot
       - dependencies
