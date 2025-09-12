@@ -38,7 +38,7 @@ pub struct InstructionFilter {
 ----
 pub trait InstructionDecoder<'a> {
     type InstructionType;
-    
+
     fn decode_instruction(
         &self,
         instruction: &'a Instruction,
@@ -187,13 +187,13 @@ pub struct AccountPattern {
 pub enum SolanaFilterError {
     #[error("Failed to decode instruction: {0}")]
     InstructionDecodeError(String),
-    
+
     #[error("Failed to parse transaction: {0}")]
     TransactionParseError(String),
-    
+
     #[error("Account state error: {0}")]
     AccountStateError(String),
-    
+
     #[error("Program error: {0}")]
     ProgramError(String)
 }
@@ -422,7 +422,7 @@ impl From<InstructionsWithMetadata> for NestedInstructions {
    ```rust
    impl<'a> InstructionDecoder<'a> for SolanaInstructionDecoder {
        type InstructionType = DecodedInstruction<Vec<u8>>;
-       
+
        fn decode_instruction(
            &self,
            instruction: &'a Instruction
@@ -434,7 +434,7 @@ impl From<InstructionsWithMetadata> for NestedInstructions {
 
 2. **Processor Integration**
    ```rust
-   impl Processor<InputType = InstructionProcessorInputType<DecodedInstruction<Vec<u8>>>> 
+   impl Processor<InputType = InstructionProcessorInputType<DecodedInstruction<Vec<u8>>>>
    for SolanaInstructionProcessor {
        async fn process(
            &mut self,
@@ -750,11 +750,11 @@ impl SolanaProgramDecoder for TokenProgramDecoder {
    pub enum DecoderError {
        #[error("Unknown program: {0}")]
        UnknownProgram(Pubkey),
-       
+
        #[error("Invalid instruction data: {0}")]
        InvalidInstructionData(String),
-       
+
        #[error("Carbon decoder error: {0}")]
        CarbonError(#[from] carbon::error::Error),
    }
-   ``` 
+   ```

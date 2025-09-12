@@ -1,12 +1,9 @@
 ---
 name: PR Title
-
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
     types: [opened, edited, reopened, synchronize]
-
 jobs:
   validate:
     runs-on: ubuntu-latest
